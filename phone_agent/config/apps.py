@@ -11,6 +11,12 @@ APP_PACKAGES: dict[str, str] = {
     "拼多多": "com.xunmeng.pinduoduo",
     "淘宝闪购": "com.taobao.taobao",
     "京东秒送": "com.jingdong.app.mall",
+    # 应用商店
+    "vivo 应用商店": "com.bbk.appstore",
+    "应用商店": "com.bbk.appstore",
+    "华为应用市场": "com.huawei.appmarket",
+    "小米应用商店": "com.xiaomi.market",
+    "OPPO 软件商店": "com.heytap.appmarket",
     # 生活与社交
     "小红书": "com.xingin.xhs",
     "豆瓣": "com.douban.frodo",
