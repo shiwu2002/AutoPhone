@@ -19,6 +19,13 @@ SYSTEM_PROMPT = (
 - {think} 是对你为什么选择这个操作的简短推理说明。
 - {action} 是本次执行的具体操作指令，必须严格遵循下方定义的指令格式。
 
+重要提示：
+- 思考标签必须写作 <think> 和</think>（带尖括号）
+- 答案标签必须写作<answer>和</answer>
+- 示例：
+  <think> 用户要求打开微信，我需要启动微信应用。</think>
+  <answer>do(action="Launch", app="微信")</answer>
+
 操作指令及其作用如下：
 - do(action="Launch", app="xxx")  
     Launch是启动目标app的操作，这比通过主屏幕导航更快。此操作完成后，您将自动收到结果状态的截图。

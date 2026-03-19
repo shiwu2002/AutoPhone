@@ -116,12 +116,15 @@ adb connect 192.168.1.100:5555  # 替换为您设备的 IP
 
 ### 第四步：配置 AI 模型
 
+#### 方式一：使用远程 API（推荐新手）
+
 编辑 `config.json` 文件：
 ```json
 {
   "model": {
+    "type": "remote",
     "base_url": "https://api-inference.modelscope.cn/v1",
-    "model_name": "Qwen/Qwen3.5-35B-A3B",
+    "model_name": "ZhipuAI/AutoGLM-Phone-9B",
     "api_key": "您的 API 密钥"
   }
 }
@@ -129,7 +132,57 @@ adb connect 192.168.1.100:5555  # 替换为您设备的 IP
 
 **获取 API 密钥：**
 - 使用 ModelScope：https://modelscope.cn/
-- 或使用本地模型服务
+
+#### 方式二：使用本地模型（Ollama）
+
+1. **安装 Ollama**
+
+```bash
+# macOS
+brew install ollama
+
+# Windows
+# 下载：https://ollama.com/download
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+2. **启动 Ollama 服务**
+
+```bash
+ollama serve
+```
+
+3. **拉取视觉语言模型**
+
+```bash
+# 推荐模型：qwen2.5-vl-7b（支持视觉理解）
+ollama pull qwen2.5-vl:7b
+
+# 或者使用其他模型
+ollama pull llama3.2-vision
+```
+
+4. **配置 config.json**
+
+```json
+{
+  "model": {
+    "type": "local",
+    "base_url": "http://localhost:11434/v1",
+    "model_name": "qwen2.5-vl-7b",
+    "api_key": "ollama"
+  }
+}
+```
+
+5. **使用配置向导（可选）**
+
+运行以下命令进入交互式配置：
+```bash
+python main.py --config
+```
 
 ### 第五步：运行！
 

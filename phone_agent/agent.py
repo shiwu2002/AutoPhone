@@ -200,6 +200,10 @@ class PhoneAgent:
             logger.info(f"💭 {msgs['thinking']}:")
             logger.info("-" * 50)
             response = self.model_client.request(self._context)
+
+            # Log thinking process if available
+            if response.thinking and self.agent_config.verbose:
+                logger.info(response.thinking)
         except Exception as e:
             logger.error(f"Model request failed: {e}", exc_info=True)
             return StepResult(

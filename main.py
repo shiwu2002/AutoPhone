@@ -12,6 +12,12 @@ import sys
 from typing import Optional
 from urllib.parse import urlparse
 
+# Set UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from openai import OpenAI
 
 from phone_agent import PhoneAgent
@@ -316,24 +322,29 @@ Examples:
     )
 
     # Model options (使用配置文件中的默认值)
+    # Environment variables take precedence, but empty string means "use config"
+    env_base_url = os.getenv("PHONE_AGENT_BASE_URL")
+    env_model = os.getenv("PHONE_AGENT_MODEL")
+    env_api_key = os.getenv("PHONE_AGENT_API_KEY")
+
     parser.add_argument(
         "--base-url",
         type=str,
-        default=os.getenv("PHONE_AGENT_BASE_URL", model_config.get('base_url', "http://localhost:8000/v1")),
+        default=model_config.get('base_url', "http://localhost:8000/v1") if not env_base_url else env_base_url,
         help="Model API base URL",
     )
 
     parser.add_argument(
         "--model",
         type=str,
-        default=os.getenv("PHONE_AGENT_MODEL", model_config.get('model_name', "autoglm-phone-9b")),
+        default=model_config.get('model_name', "autoglm-phone-9b") if not env_model else env_model,
         help="Model name",
     )
 
     parser.add_argument(
         "--apikey",
         type=str,
-        default=os.getenv("PHONE_AGENT_API_KEY", model_config.get('api_key', "EMPTY")),
+        default=model_config.get('api_key', "EMPTY") if not env_api_key else env_api_key,
         help="API key for model authentication",
     )
 
@@ -406,6 +417,10 @@ Examples:
         choices=["adb"],
         default=device_config.get('type', "adb"),
         help="Device type: adb for Android (default: adb)",
+    )
+
+    parser.add_argument(
+        "--config", action="store_true", help="Interactive configuration wizard for local model setup"
     )
 
     parser.add_argument(
@@ -490,6 +505,195 @@ def handle_device_commands(args) -> bool:
     return False
 
 
+def check_ollama_service(base_url: str) -> bool:
+    """
+    Check if Ollama service is running.
+
+    Args:
+        base_url: Ollama API base URL
+
+    Returns:
+        True if service is available, False otherwise
+    """
+    import requests
+
+    try:
+        # First try the /api/tags endpoint (Ollama native)
+        parsed = urlparse(base_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        response = requests.get(f"{base}/api/tags", timeout=3.0)
+        if response.status_code == 200:
+            return True
+    except Exception:
+        pass
+
+    try:
+        # Fallback: try /api/version endpoint
+        parsed = urlparse(base_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        response = requests.get(f"{base}/api/version", timeout=3.0)
+        if response.status_code == 200:
+            return True
+    except Exception:
+        pass
+
+    try:
+        # Last resort: try OpenAI-compatible chat endpoint with empty model
+        client = OpenAI(base_url=base_url, api_key="ollama", timeout=3.0)
+        response = client.chat.completions.create(
+            model="llama3.2",  # Use a common model name instead of "dummy"
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=1,
+            stream=False,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def list_ollama_models(base_url: str) -> list[str]:
+    """
+    List available models in Ollama.
+
+    Args:
+        base_url: Ollama API base URL
+
+    Returns:
+        List of model names
+    """
+    try:
+        client = OpenAI(base_url=base_url, api_key="ollama", timeout=5.0)
+        models = client.models.list()
+        return [model.id for model in models.data]
+    except Exception:
+        return []
+
+
+def run_config_wizard():
+    """Interactive configuration wizard for setting up local model."""
+    print("=" * 50)
+    print("Phone Agent - Configuration Wizard")
+    print("=" * 50)
+    print()
+
+    config_path = Path(__file__).parent / "config.json"
+    config = load_config()
+
+    # Get current config
+    model_config = config.get('model', {})
+    local_model_config = config.get('local_model', {})
+
+    print("Select model type:")
+    print("  1. Remote API (ModelScope, etc.)")
+    print("  2. Local Model (Ollama)")
+    print()
+
+    choice = input("Enter your choice (1 or 2): ").strip()
+
+    if choice == "2":
+        # Local model configuration
+        print()
+        print("Configuring Local Model (Ollama)")
+        print("-" * 50)
+
+        # Default values
+        default_base_url = local_model_config.get('base_url', 'http://localhost:11434/v1')
+        default_model = local_model_config.get('model_name', 'qwen2.5-vl-7b')
+        default_api_key = local_model_config.get('api_key', 'ollama')
+
+        # Check if Ollama service is running
+        print()
+        print(f"Checking Ollama service at {default_base_url}...", end=" ")
+        ollama_running = check_ollama_service(default_base_url)
+
+        if ollama_running:
+            print("✅ Running")
+            print()
+            # List available models
+            models = list_ollama_models(default_base_url)
+            if models:
+                print("Available models:")
+                for i, model in enumerate(models, 1):
+                    print(f"  {i}. {model}")
+                print()
+
+                model_choice = input(f"Select a model (1-{len(models)}) or enter custom name: ").strip()
+                if model_choice.isdigit() and 1 <= int(model_choice) <= len(models):
+                    selected_model = models[int(model_choice) - 1]
+                elif model_choice:
+                    selected_model = model_choice
+                else:
+                    selected_model = default_model
+            else:
+                print("⚠️  No models found. You may need to pull a model first.")
+                print("   Run: ollama pull qwen2.5-vl:7b")
+                selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+
+            base_url = default_base_url
+            api_key = default_api_key
+        else:
+            print("❌ Not running")
+            print()
+            print("Please start Ollama service:")
+            print("  1. Install Ollama: https://ollama.com/download")
+            print("  2. Run: ollama serve")
+            print("  3. Pull a vision model: ollama pull qwen2.5-vl:7b")
+            print()
+
+            base_url = input(f"Enter Ollama base URL [{default_base_url}]: ").strip() or default_base_url
+            selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+            api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
+
+        # Update config
+        config['model'] = {
+            'type': 'local',
+            'base_url': base_url if 'base_url' in dir() else default_base_url,
+            'model_name': selected_model,
+            'api_key': api_key
+        }
+
+    else:
+        # Remote API configuration
+        print()
+        print("Configuring Remote API")
+        print("-" * 50)
+
+        default_base_url = model_config.get('base_url', 'https://api-inference.modelscope.cn/v1')
+        default_model = model_config.get('model_name', 'ZhipuAI/AutoGLM-Phone-9B')
+        default_api_key = model_config.get('api_key', '')
+
+        base_url = input(f"Enter API base URL [{default_base_url}]: ").strip() or default_base_url
+        model_name = input(f"Enter model name [{default_model}]: ").strip() or default_model
+        api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
+
+        # Update config
+        config['model'] = {
+            'type': 'remote',
+            'base_url': base_url,
+            'model_name': model_name,
+            'api_key': api_key
+        }
+
+    # Save config
+    print()
+    print("Saving configuration...")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    print("✅ Configuration saved!")
+    print()
+    print("=" * 50)
+    print("Summary:")
+    print(f"  Model Type: {config['model']['type']}")
+    print(f"  Base URL: {config['model']['base_url']}")
+    print(f"  Model: {config['model']['model_name']}")
+    print("=" * 50)
+    print()
+    print("You can now run the agent with:")
+    print("  python main.py")
+    print()
+
+
 def main():
     """Main entry point."""
     args = parse_args()
@@ -499,6 +703,11 @@ def main():
 
     # Set device type globally
     set_device_type(device_type)
+
+    # Handle --config (interactive configuration wizard)
+    if args.config:
+        run_config_wizard()
+        return
 
     # Handle --list-apps (no system check needed)
     if args.list_apps:
@@ -523,11 +732,16 @@ def main():
         sys.exit(1)
 
     # Create configurations and agent based on device type
+    # Load config from file for extra options
+    config = load_config()
+    model_config_dict = config.get('model', {})
+
     model_config = ModelConfig(
         base_url=args.base_url,
         model_name=args.model,
         api_key=args.apikey,
         lang=args.lang,
+        use_thinking=model_config_dict.get('use_thinking', False),
     )
 
     # Create Android agent

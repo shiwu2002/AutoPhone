@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import requests; r = requests.get\\(''http://localhost:11434/api/tags'', timeout=3\\); print\\(''Status:'', r.status_code\\); print\\(''Response:'', r.json\\(\\)\\)\")",
+      "Bash(python main.py --config)",
+      "Bash(python -c \":*)",
+      "Bash(python -m json.tool)",
+      "Bash(python main.py --help)",
+      "Bash(timeout 30 python main.py \"测试\")"
+    ]
+  }
+}
