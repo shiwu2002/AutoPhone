@@ -573,7 +573,7 @@ def list_ollama_models(base_url: str) -> list[str]:
 
 
 def run_config_wizard():
-    """Interactive configuration wizard for setting up local model."""
+    """Interactive configuration wizard for setting up model and agent."""
     print("=" * 50)
     print("Phone Agent - Configuration Wizard")
     print("=" * 50)
@@ -584,8 +584,14 @@ def run_config_wizard():
 
     # Get current config
     model_config = config.get('model', {})
-    local_model_config = config.get('local_model', {})
+    agent_config = config.get('agent', {})
+    device_config = config.get('device', {})
 
+    # ========== Model Configuration ==========
+    print("=" * 50)
+    print("1. Model Configuration")
+    print("=" * 50)
+    print()
     print("Select model type:")
     print("  1. Remote API (ModelScope, etc.)")
     print("  2. Local Model (Ollama)")
@@ -600,9 +606,9 @@ def run_config_wizard():
         print("-" * 50)
 
         # Default values
-        default_base_url = local_model_config.get('base_url', 'http://localhost:11434/v1')
-        default_model = local_model_config.get('model_name', 'qwen2.5-vl-7b')
-        default_api_key = local_model_config.get('api_key', 'ollama')
+        default_base_url = model_config.get('base_url', 'http://localhost:11434/v1')
+        default_model = model_config.get('model_name', 'qwen3.5:4b')
+        default_api_key = model_config.get('api_key', 'ollama')
 
         # Check if Ollama service is running
         print()
@@ -629,30 +635,42 @@ def run_config_wizard():
                     selected_model = default_model
             else:
                 print("⚠️  No models found. You may need to pull a model first.")
-                print("   Run: ollama pull qwen2.5-vl:7b")
+                print("   Run: ollama pull qwen3.5:4b")
                 selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
-
-            base_url = default_base_url
-            api_key = default_api_key
         else:
             print("❌ Not running")
             print()
             print("Please start Ollama service:")
             print("  1. Install Ollama: https://ollama.com/download")
             print("  2. Run: ollama serve")
-            print("  3. Pull a vision model: ollama pull qwen2.5-vl:7b")
+            print("  3. Pull a model: ollama pull qwen3.5:4b")
             print()
 
             base_url = input(f"Enter Ollama base URL [{default_base_url}]: ").strip() or default_base_url
             selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
             api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
+            config['model'] = {
+                'type': 'local',
+                'base_url': base_url,
+                'model_name': selected_model,
+                'api_key': api_key,
+                'use_thinking': True
+            }
+            _save_config_interactive(config, config_path)
+            _configure_agent_interactive(config, agent_config)
+            _save_config_interactive(config, config_path)
+            return
 
-        # Update config
+        # Enable thinking for local models
+        enable_thinking = input("Enable thinking feature for local model? [Y/n]: ").strip().lower()
+        use_thinking = enable_thinking != 'n' and enable_thinking != 'no'
+
         config['model'] = {
             'type': 'local',
-            'base_url': base_url if 'base_url' in dir() else default_base_url,
+            'base_url': default_base_url,
             'model_name': selected_model,
-            'api_key': api_key
+            'api_key': default_api_key,
+            'use_thinking': use_thinking
         }
 
     else:
@@ -669,27 +687,117 @@ def run_config_wizard():
         model_name = input(f"Enter model name [{default_model}]: ").strip() or default_model
         api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
 
-        # Update config
+        # Remote models don't support thinking feature
         config['model'] = {
             'type': 'remote',
             'base_url': base_url,
             'model_name': model_name,
-            'api_key': api_key
+            'api_key': api_key,
+            'use_thinking': False
         }
 
     # Save config
+    _save_config_interactive(config, config_path)
+
+    # ========== Agent Configuration ==========
+    _configure_agent_interactive(config, agent_config)
+
+    # ========== Device Configuration ==========
+    _configure_device_interactive(config, device_config)
+
+    # Save all configurations
+    _save_config_interactive(config, config_path)
+
+    # Print summary
+    _print_config_summary(config)
+
+
+def _save_config_interactive(config: dict, config_path: Path):
+    """Save configuration to file."""
     print()
     print("Saving configuration...")
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
-
     print("✅ Configuration saved!")
+
+
+def _configure_agent_interactive(config: dict, agent_config: dict):
+    """Configure agent settings interactively."""
     print()
     print("=" * 50)
-    print("Summary:")
-    print(f"  Model Type: {config['model']['type']}")
-    print(f"  Base URL: {config['model']['base_url']}")
-    print(f"  Model: {config['model']['model_name']}")
+    print("2. Agent Configuration")
+    print("=" * 50)
+    print()
+
+    # Max steps (default: unlimited/0)
+    default_max_steps = agent_config.get('max_steps', 0)
+    max_steps_input = input(f"Enter maximum steps per task (0=unlimited) [{default_max_steps}]: ").strip()
+    max_steps = int(max_steps_input) if max_steps_input else default_max_steps
+
+    # Language
+    default_lang = agent_config.get('lang', 'cn')
+    print("Select language:")
+    print("  1. 中文 (Chinese)")
+    print("  2. English")
+    lang_choice = input(f"Enter choice (1/2) [{'1' if default_lang == 'cn' else '2'}]: ").strip()
+    lang = 'cn' if lang_choice == '1' or (not lang_choice and default_lang == 'cn') else 'en'
+
+    # Verbose output
+    default_verbose = agent_config.get('verbose', True)
+    verbose_input = input(f"Enable verbose output? [Y/n]: ").strip().lower()
+    verbose = verbose_input not in ('n', 'no') if verbose_input else default_verbose
+
+    config['agent'] = {
+        'max_steps': max_steps,
+        'device_id': agent_config.get('device_id'),
+        'verbose': verbose,
+        'lang': lang
+    }
+
+    print("✅ Agent configuration saved!")
+
+
+def _configure_device_interactive(config: dict, device_config: dict):
+    """Configure device settings interactively."""
+    print()
+    print("=" * 50)
+    print("3. Device Configuration")
+    print("=" * 50)
+    print()
+
+    # Auto-connect
+    default_auto_connect = device_config.get('auto_connect', True)
+    auto_connect_input = input(f"Auto-connect to device on startup? [Y/n]: ").strip().lower()
+    auto_connect = auto_connect_input not in ('n', 'no') if auto_connect_input else default_auto_connect
+
+    config['device'] = {
+        'type': 'adb',
+        'remote_address': device_config.get('remote_address'),
+        'auto_connect': auto_connect
+    }
+    print("✅ Device configuration saved!")
+
+
+def _print_config_summary(config: dict):
+    """Print configuration summary."""
+    print()
+    print("=" * 50)
+    print("Configuration Summary")
+    print("=" * 50)
+
+    model = config.get('model', {})
+    agent = config.get('agent', {})
+    device = config.get('device', {})
+
+    print(f"Model Type:      {model.get('type', 'unknown')}")
+    print(f"Model Name:      {model.get('model_name', 'unknown')}")
+    print(f"Base URL:        {model.get('base_url', 'unknown')}")
+    if model.get('type') == 'local':
+        print(f"Thinking:        {'Enabled' if model.get('use_thinking') else 'Disabled'}")
+    print(f"Language:        {'中文 (Chinese)' if agent.get('lang') == 'cn' else 'English'}")
+    print(f"Max Steps:       {agent.get('max_steps', 0) if agent.get('max_steps', 0) > 0 else 'Unlimited'}")
+    print(f"Verbose Output:  {'Yes' if agent.get('verbose') else 'No'}")
+    print(f"Auto-connect:    {'Yes' if device.get('auto_connect') else 'No'}")
     print("=" * 50)
     print()
     print("You can now run the agent with:")

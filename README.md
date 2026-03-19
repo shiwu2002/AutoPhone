@@ -78,7 +78,7 @@
 # macOS
 brew install android-platform-tools
 
-# Linux  
+# Linux
 sudo apt install android-tools-adb
 
 # Windows
@@ -157,36 +157,65 @@ ollama serve
 3. **拉取视觉语言模型**
 
 ```bash
-# 推荐模型：qwen2.5-vl-7b（支持视觉理解）
-ollama pull qwen2.5-vl:7b
-
-# 或者使用其他模型
-ollama pull llama3.2-vision
+# 推荐模型：qwen3.5（支持视觉理解，内置思考能力）
+ollama pull qwen3.5:4b
 ```
 
-4. **配置 config.json**
-
-```json
-{
-  "model": {
-    "type": "local",
-    "base_url": "http://localhost:11434/v1",
-    "model_name": "qwen2.5-vl-7b",
-    "api_key": "ollama"
-  }
-}
-```
-
-5. **使用配置向导（可选）**
+4. **使用配置向导（推荐）**
 
 运行以下命令进入交互式配置：
 ```bash
 python main.py --config
 ```
 
+配置向导将引导您完成：
+- 选择模型类型（本地 Ollama / 远程 API）
+- 选择或输入模型名称
+- 启用思考功能（本地模型专属，显示推理过程）
+- 设置最大执行步数（0=无限）
+- 选择界面语言
+- 配置自动连接设备
+
+5. **手动配置 config.json（可选）**
+
+```json
+{
+  "model": {
+    "type": "local",
+    "base_url": "http://localhost:11434/v1",
+    "model_name": "qwen3.5:4b",
+    "api_key": "ollama",
+    "use_thinking": true
+  },
+  "agent": {
+    "max_steps": 0,
+    "verbose": true,
+    "lang": "cn",
+    "device_id": null
+  },
+  "device": {
+    "type": "adb",
+    "auto_connect": true
+  }
+}
+```
+
+**配置说明：**
+
+| 配置项 | 说明 | 推荐值 |
+|--------|------|--------|
+| `model.type` | 模型类型：`local` 本地 / `remote` 远程 | `local` |
+| `model.base_url` | Ollama 服务地址 | `http://localhost:11434/v1` |
+| `model.model_name` | 模型名称 | `qwen3.5:4b` |
+| `model.use_thinking` | 启用思考过程显示（仅本地模型） | `true` |
+| `agent.max_steps` | 单任务最大执行步数（0=无限） | `0` |
+| `agent.verbose` | 显示详细执行日志 | `true` |
+| `agent.lang` | 界面语言：`cn` 中文 / `en` 英文 | `cn` |
+| `device.auto_connect` | 启动时自动连接设备 | `true` |
+
 ### 第五步：运行！
 
-### 方式一：命令行交互（推荐新手）
+#### 方式一：命令行交互（推荐新手）
 
 ```bash
 python3 main.py
@@ -197,13 +226,13 @@ python3 main.py
 Enter your task: 打开微信并给张三发消息
 ```
 
-### 方式二：直接执行任务
+#### 方式二：直接执行任务
 
 ```bash
 python3 main.py "打开抖音搜索猫咪视频"
 ```
 
-### 方式三：Web 界面（最直观）
+#### 方式三：Web 界面（最直观）
 
 ```bash
 python3 server.py
@@ -235,6 +264,11 @@ python3 main.py --list-apps
 python3 main.py --verbose "打开微信"
 ```
 
+**配置向导：**
+```bash
+python3 main.py --config
+```
+
 ---
 
 ## 🔧 常见问题
@@ -261,6 +295,11 @@ adb devices
 - 确保目标应用已安装
 - 查看详细错误信息
 
+**Q5: 本地模型不显示思考过程？**
+- 确保 `model.use_thinking` 设置为 `true`
+- 确保使用 Ollama 本地模型而非远程 API
+- 检查 `agent.verbose` 是否为 `true`
+
 ---
 
 ## 📚 技术架构（可选阅读）
@@ -280,5 +319,5 @@ adb devices
 
 感谢开源社区和所有贡献者！
 
-**毕业设计项目** - 计算机科学与技术专业  
+**毕业设计项目** - 计算机科学与技术专业
 *最后更新：2026 年 3 月*

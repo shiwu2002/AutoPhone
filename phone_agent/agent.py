@@ -115,7 +115,8 @@ class PhoneAgent:
             return result.message or "Task completed"
 
         # Continue until finished or max steps reached
-        while self._step_count < self.agent_config.max_steps:
+        # max_steps <= 0 means unlimited
+        while self.agent_config.max_steps <= 0 or self._step_count < self.agent_config.max_steps:
             result = self._execute_step(is_first=False)
 
             if result.finished:
@@ -126,9 +127,9 @@ class PhoneAgent:
         # Max steps reached
         end_time = datetime.now()
         self._save_history(
-            task, 
-            result, 
-            start_time, 
+            task,
+            result,
+            start_time,
             end_time,
             error_message="Max steps reached"
         )

@@ -7,7 +7,7 @@
     "use_thinking": true
   },
   "agent": {
-    "max_steps": 100,
+    "max_steps": 0,
     "device_id": null,
     "verbose": true,
     "lang": "cn"
@@ -15,7 +15,7 @@
   "device": {
     "type": "adb",
     "remote_address": null,
-    "auto_connect": false
+    "auto_connect": true
   },
   "command_window": {
     "enabled": true,
