@@ -321,30 +321,33 @@ Examples:
         """,
     )
 
-    # Model options (使用配置文件中的默认值)
-    # Environment variables take precedence, but empty string means "use config"
+    # Model options
+    # When model type is 'local', prefer config over environment variables
     env_base_url = os.getenv("PHONE_AGENT_BASE_URL")
     env_model = os.getenv("PHONE_AGENT_MODEL")
     env_api_key = os.getenv("PHONE_AGENT_API_KEY")
 
+    # Use config values for local model, env vars for remote model
+    is_local = model_config.get('type', 'remote') == 'local'
+
     parser.add_argument(
         "--base-url",
         type=str,
-        default=model_config.get('base_url', "http://localhost:8000/v1") if not env_base_url else env_base_url,
+        default=model_config.get('base_url', "http://localhost:8000/v1") if is_local or not env_base_url else env_base_url,
         help="Model API base URL",
     )
 
     parser.add_argument(
         "--model",
         type=str,
-        default=model_config.get('model_name', "autoglm-phone-9b") if not env_model else env_model,
+        default=model_config.get('model_name', "autoglm-phone-9b") if is_local or not env_model else env_model,
         help="Model name",
     )
 
     parser.add_argument(
         "--apikey",
         type=str,
-        default=model_config.get('api_key', "EMPTY") if not env_api_key else env_api_key,
+        default=model_config.get('api_key', "ollama") if is_local or not env_api_key else env_api_key,
         help="API key for model authentication",
     )
 

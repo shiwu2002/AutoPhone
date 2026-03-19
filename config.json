@@ -6,12 +6,6 @@
     "api_key": "ollama",
     "use_thinking": true
   },
-  "local_model": {
-    "type": "ollama",
-    "base_url": "http://localhost:11434/v1",
-    "model_name": "qwen2.5-vl-7b",
-    "api_key": "ollama"
-  },
   "agent": {
     "max_steps": 100,
     "device_id": null,

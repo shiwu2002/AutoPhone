@@ -6,7 +6,14 @@
       "Bash(python -c \":*)",
       "Bash(python -m json.tool)",
       "Bash(python main.py --help)",
-      "Bash(timeout 30 python main.py \"测试\")"
+      "Bash(timeout 30 python main.py \"测试\")",
+      "Bash(timeout 60 python main.py \"测试\")",
+      "Bash(timeout 90 python main.py \"测试\")",
+      "Bash(curl -X POST http://localhost:11434/api/chat -H \"Content-Type: application/json\" -d '{:*)",
+      "Bash(ollama list:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(timeout 60 python -c \":*)"
     ]
   }
 }
