@@ -10,6 +10,7 @@ from io import BytesIO
 
 from PIL import Image
 
+from phone_agent.adb.cmd_executor import CommandExecutor
 from phone_agent.utils.resolution import ResolutionConverter, CoordinateMapper
 
 

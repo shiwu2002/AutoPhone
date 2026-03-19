@@ -39,9 +39,9 @@ class DeviceFactory:
                 raise ValueError(f"Unknown device type: {self.device_type}")
         return self._module
 
-    def get_screenshot(self, device_id: str | None = None, timeout: int = 10):
+    def get_screenshot(self, device_id: str | None = None, timeout: int = 10, enable_compression: bool = True):
         """从设备获取截图。"""
-        return self.module.get_screenshot(device_id, timeout)
+        return self.module.get_screenshot(device_id, timeout, enable_compression)
 
     def get_current_app(self, device_id: str | None = None) -> str:
         """获取当前应用名称。"""

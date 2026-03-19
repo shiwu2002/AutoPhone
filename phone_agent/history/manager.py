@@ -134,8 +134,8 @@ class TaskHistoryManager:
         error_message: str | None = None
     ) -> int:
         """
-        添加任务记录。
-        
+        添加任务记录（只保留最近 3 条记录）。
+
         Args:
             task: 任务描述
             result: 任务结果
@@ -146,18 +146,18 @@ class TaskHistoryManager:
             device_id: 设备 ID
             model_name: 使用的模型名称
             error_message: 错误消息（如果失败）
-            
+
         Returns:
             新记录的 ID
         """
         duration = (end_time - start_time).total_seconds()
-        
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute('''
-            INSERT INTO task_history 
-            (task, result, steps, success, start_time, end_time, 
+            INSERT INTO task_history
+            (task, result, steps, success, start_time, end_time,
              duration_seconds, device_id, model_name, error_message)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
@@ -165,12 +165,23 @@ class TaskHistoryManager:
             start_time.isoformat(), end_time.isoformat(),
             duration, device_id, model_name, error_message
         ))
-        
+
         record_id = cursor.lastrowid
+
+        # 删除旧记录，只保留最近 3 条
+        cursor.execute('''
+            DELETE FROM task_history
+            WHERE id NOT IN (
+                SELECT id FROM task_history
+                ORDER BY created_at DESC
+                LIMIT 3
+            )
+        ''')
+
         conn.commit()
         conn.close()
-        
-        logger.info(f"Added task record #{record_id}: {task[:50]}...")
+
+        logger.info(f"Added task record #{record_id}: {task[:50]}... (keeping last 3 records)")
         return record_id if record_id is not None else 0
     
     def get_record(self, record_id: int) -> TaskRecord | None:

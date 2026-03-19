@@ -21,7 +21,8 @@
       "Bash(findstr -i \" mCurrentFocus\\\\|mCurrentActivity\")",
       "Bash(Select-String -Pattern \"mCurrentFocus\" -Context 2)",
       "Bash(python -c \"from phone_agent.adb.device import get_current_app; print\\(get_current_app\\(\\)\\)\")",
-      "Bash(python -c \"from phone_agent.adb.device import get_current_app; print\\(''Current app:'', get_current_app\\(\\)\\)\")"
+      "Bash(python -c \"from phone_agent.adb.device import get_current_app; print\\(''Current app:'', get_current_app\\(\\)\\)\")",
+      "Bash(python -c \"from phone_agent.adb.screenshot import get_screenshot; s = get_screenshot\\(enable_compression=True\\); print\\(f''OK: {s.width}x{s.height}''\\)\")"
     ]
   }
 }

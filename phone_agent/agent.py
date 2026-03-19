@@ -88,6 +88,7 @@ class PhoneAgent:
 
         self._context: list[dict[str, Any]] = []
         self._step_count = 0
+        self._max_context_rounds = 5  # 只保留最近 5 轮对话
 
     def run(self, task: str) -> str:
         """
@@ -158,6 +159,20 @@ class PhoneAgent:
         self._context = []
         self._step_count = 0
 
+    def _trim_context(self) -> None:
+        """修剪上下文，只保留 system prompt 和最近 N 轮对话。"""
+        if len(self._context) <= 1:
+            return  # 只有 system prompt 或更少，不需要修剪
+
+        # 保留 system prompt（第一个）和最近 N 轮对话（每轮包含 user + assistant 两条消息）
+        # 上下文结构：[system, user1, assistant1, user2, assistant2, ...]
+        max_messages = 1 + (self._max_context_rounds * 2)  # 1 system + 5*2 = 11
+
+        if len(self._context) > max_messages:
+            # 保留 system prompt 和最近的消息
+            self._context = [self._context[0]] + self._context[-(max_messages - 1):]
+            logger.info(f"Context trimmed to {len(self._context)} messages (keeping last {self._max_context_rounds} rounds)")
+
     def _execute_step(
         self, user_prompt: str | None = None, is_first: bool = False
     ) -> StepResult:
@@ -166,7 +181,7 @@ class PhoneAgent:
 
         # Capture current screen state
         device_factory = get_device_factory()
-        screenshot = device_factory.get_screenshot(self.agent_config.device_id)
+        screenshot = device_factory.get_screenshot(self.agent_config.device_id, enable_compression=True)
         current_app = device_factory.get_current_app(self.agent_config.device_id)
 
         # Build messages
@@ -251,6 +266,9 @@ class PhoneAgent:
                 f"<think>{response.thinking}</think><answer>{response.action}</answer>"
             )
         )
+
+        # Trim context to keep only recent rounds
+        self._trim_context()
 
         # Check if finished
         finished = action.get("_metadata") == "finish" or result.should_finish

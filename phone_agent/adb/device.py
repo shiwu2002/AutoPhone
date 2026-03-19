@@ -4,6 +4,7 @@ import subprocess
 import time
 from subprocess import CompletedProcess
 
+from phone_agent.adb.cmd_executor import CommandExecutor
 from phone_agent.config.apps import APP_PACKAGES
 from phone_agent.config.timing import TIMING_CONFIG
 
