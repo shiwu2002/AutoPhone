@@ -13,7 +13,15 @@
       "Bash(ollama list:*)",
       "Bash(pip show:*)",
       "Bash(pip install:*)",
-      "Bash(timeout 60 python -c \":*)"
+      "Bash(timeout 60 python -c \":*)",
+      "Bash(python main.py --verbose \"打开微信\")",
+      "Bash(adb shell:*)",
+      "Bash(adb -s 10AC9A0JL600219 shell ime list -s)",
+      "Bash(adb -s 10AC9A0JL600219 shell dumpsys window)",
+      "Bash(findstr -i \" mCurrentFocus\\\\|mCurrentActivity\")",
+      "Bash(Select-String -Pattern \"mCurrentFocus\" -Context 2)",
+      "Bash(python -c \"from phone_agent.adb.device import get_current_app; print\\(get_current_app\\(\\)\\)\")",
+      "Bash(python -c \"from phone_agent.adb.device import get_current_app; print\\(''Current app:'', get_current_app\\(\\)\\)\")"
     ]
   }
 }

@@ -20,6 +20,15 @@ def get_current_app(device_id: str | None = None) -> str:
     Returns:
         如果识别到则返回应用名称，否则返回 "System Home"。
     """
+    # If device_id not specified and multiple devices exist, use the first one
+    if not device_id:
+        devices = _get_connected_devices()
+        if len(devices) == 0:
+            raise ValueError("No connected devices")
+        elif len(devices) >= 1:
+            # Use first available device (even if only one exists)
+            device_id = devices[0]
+
     adb_prefix = _get_adb_prefix(device_id)
 
     # 此命令需要获取输出，使用静默模式
@@ -28,6 +37,9 @@ def get_current_app(device_id: str | None = None) -> str:
     )
     output = result.stdout
     if not output:
+        # Check stderr for device error
+        if result.stderr and "more than one device" in result.stderr:
+            raise ValueError(f"Multiple devices connected, please specify device_id: {result.stderr.strip()}")
         raise ValueError("No output from dumpsys window")
 
     # Parse window focus info
@@ -38,6 +50,16 @@ def get_current_app(device_id: str | None = None) -> str:
                     return app_name
 
     return "System Home"
+
+
+def _get_connected_devices() -> list[str]:
+    """Get list of connected device IDs."""
+    result = CommandExecutor.run_silent(["adb", "devices"], timeout=5)
+    devices = []
+    for line in result.stdout.strip().split("\n")[1:]:  # Skip header
+        if line.strip() and "\tdevice" in line:
+            devices.append(line.split("\t")[0].strip())
+    return devices
 
 
 def tap(

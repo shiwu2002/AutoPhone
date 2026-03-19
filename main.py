@@ -32,7 +32,8 @@ logger = setup_logger(__name__, level=logging.INFO)
 
 
 def check_system_requirements(
-    device_type: DeviceType = DeviceType.ADB
+    device_type: DeviceType = DeviceType.ADB,
+    args: Optional[argparse.Namespace] = None,
 ) -> bool:
     """
     在运行代理之前检查系统要求。
@@ -99,6 +100,7 @@ def check_system_requirements(
 
     # Check 2: Device connected
     logger.info("2. Checking connected devices...")
+    devices = []
     try:
         if device_type == DeviceType.ADB:
             result = CommandExecutor.run_silent(
@@ -139,10 +141,23 @@ def check_system_requirements(
     if device_type == DeviceType.ADB:
         logger.info("3. Checking ADB Keyboard...")
         try:
-            result = CommandExecutor.run_silent(
-                ["adb", "shell", "ime", "list", "-s"],
-                timeout=10,
-            )
+            # Build adb command with device ID if specified or if multiple devices exist
+            # Note: We need to check all devices (including offline) to avoid 'more than one device' error
+            adb_cmd = ["adb"]
+
+            # Determine which device to use
+            target_device = None
+            if args and args.device_id:
+                target_device = args.device_id
+            elif len(devices) >= 1:
+                # Use first available device
+                target_device = devices[0].split("\t")[0].strip()
+
+            if target_device:
+                adb_cmd.extend(["-s", target_device])
+
+            adb_cmd.extend(["shell", "ime", "list", "-s"])
+            result = CommandExecutor.run_silent(adb_cmd, timeout=10)
             ime_list = result.stdout.strip()
 
             if "com.android.adbkeyboard/.AdbIME" in ime_list:
@@ -156,8 +171,7 @@ def check_system_requirements(
                     "        https://github.com/senzhk/ADBKeyBoard/blob/master/ADBKeyboard.apk"
                 )
                 print("     2. Install it on your device: adb install ADBKeyboard.apk")
-                print(
-                    "     3. Enable it in Settings > System > Languages & Input > Virtual Keyboard"
+                print("     3. Enable it in Settings > System > Languages & Input > Virtual Keyboard"
                 )
                 all_passed = False
         except Exception as e:
@@ -400,6 +414,10 @@ Examples:
     # Other options
     parser.add_argument(
         "--quiet", "-q", action="store_true", help="Suppress verbose output"
+    )
+
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose output (show detailed execution logs)"
     )
 
     parser.add_argument(
@@ -835,7 +853,7 @@ def main():
         return
 
     # Run system requirements check before proceeding
-    if not check_system_requirements(device_type):
+    if not check_system_requirements(device_type, args):
         sys.exit(1)
 
     # Check model API connectivity and model availability
@@ -856,10 +874,12 @@ def main():
     )
 
     # Create Android agent
+    # Priority: --verbose > --quiet > config file
+    verbose = args.verbose or (not args.quiet)
     agent_config = AgentConfig(
         max_steps=args.max_steps,
         device_id=args.device_id,
-        verbose=not args.quiet,
+        verbose=verbose,
         lang=args.lang,
     )
 

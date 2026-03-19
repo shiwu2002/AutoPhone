@@ -84,9 +84,30 @@ def get_screenshot(device_id: str | None = None, timeout: int = 10) -> Screensho
 
 
 def _get_adb_prefix(device_id: str | None) -> list:
-    """获取带有可选设备指定的 ADB 命令前缀。"""
+    """Get ADB command prefix with optional device specification.
+
+    If device_id is not specified and multiple devices are connected,
+    use the first device.
+    """
     if device_id:
         return ["adb", "-s", device_id]
+
+    # Check for multiple devices
+    try:
+        result = CommandExecutor.run_silent(["adb", "devices"], timeout=5)
+        devices = []
+        for line in result.stdout.strip().split("\n")[1:]:  # Skip header
+            if line.strip() and "\tdevice" in line:
+                devices.append(line.split("\t")[0].strip())
+
+        if len(devices) == 0:
+            raise ValueError("No connected devices")
+        elif len(devices) > 1:
+            # Use first device by default
+            return ["adb", "-s", devices[0]]
+    except Exception:
+        pass
+
     return ["adb"]
 
 
