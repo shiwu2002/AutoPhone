@@ -34,7 +34,7 @@
 ┌────────▼────────┐
 │   设备抽象层     │
 │ DeviceFactory   │
-│ ADB/HDC Wrapper │
+│ ADB Wrapper │
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -235,6 +235,11 @@ python3 main.py --list-apps
 python3 main.py --verbose "打开微信"
 ```
 
+**查看当前活动应用地址：**
+**通过这个可以添加apps.py文件，获取更多支持**
+```
+adb -s 你的设备ID shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp"
+```
 ---
 
 ## 🔧 常见问题
