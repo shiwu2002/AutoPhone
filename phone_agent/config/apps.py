@@ -1,6 +1,8 @@
 """Support app name to package name mapping."""
 
 APP_PACKAGES: dict[str, str] = {
+    #工作应用  
+    "中国联通": "com.sinovatech.unicom.ui",
     # Social and communication
     "微信": "com.tencent.mm",
     "QQ": "com.tencent.mobileqq",

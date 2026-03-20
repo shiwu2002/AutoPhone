@@ -220,6 +220,86 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+
+        /* 拖放上传区域样式 */
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            position: relative;
+        }
+
+        .drop-zone:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .drop-zone.drag-over {
+            border-color: #667eea;
+            background: #e8eeff;
+            transform: scale(1.02);
+        }
+
+        .drop-zone-content {
+            pointer-events: none;
+        }
+
+        /* 隐藏的文件输入框 */
+        #fileInputHidden {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-name-display {
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .file-name-display .file-name {
+            color: #2e7d32;
+            font-weight: 500;
+        }
+
+        .file-name-display .remove-btn {
+            padding: 5px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .drop-icon {
+            font-size: 2em;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .drop-title {
+            margin: 10px 0 5px;
+            font-weight: 500;
+        }
+
+        .drop-hint {
+            color: #999;
+            font-size: 13px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -257,25 +337,102 @@
         <!-- 任务执行卡片 -->
         <div class="card">
             <h2>🚀 执行任务</h2>
-            
+
             <div id="messageArea"></div>
-            
+
             <div class="form-group">
                 <label for="taskInput">任务描述</label>
-                <textarea 
-                    id="taskInput" 
-                    class="form-control" 
+                <textarea
+                    id="taskInput"
+                    class="form-control"
                     placeholder="请输入要执行的任务，例如：打开微信并给张三发消息：晚上好"
                 ></textarea>
             </div>
-            
+
             <button id="executeBtn" class="btn" onclick="executeTask()">
                 执行任务
             </button>
-            
+
             <div id="resultArea" class="result-box" style="display: none;">
                 <div class="result-title">执行结果:</div>
                 <div id="resultContent"></div>
+            </div>
+        </div>
+
+        <!-- Excel 批量任务卡片 -->
+        <div class="card">
+            <h2>📊 Excel 批量任务</h2>
+
+            <div id="excelMessageArea"></div>
+
+            <!-- 拖放上传区域 -->
+            <div id="dropZone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <span class="drop-icon">📁</span>
+                    <p class="drop-title"><strong>点击选择文件</strong> 或 <strong>拖拽文件到此处</strong></p>
+                    <p class="drop-hint">支持 .xlsx, .xls, .txt 格式</p>
+                </div>
+                <input type="file" id="fileInputHidden" accept=".xlsx,.xls,.txt" onchange="handleFileSelect(event)" title="选择 Excel 或文本文件进行批量任务处理">
+            </div>
+
+            <!-- 选中的文件显示 -->
+            <div id="fileSelectedDisplay" class="file-name-display" style="display: none;">
+                <span class="file-name" id="selectedFileName"></span>
+                <button class="remove-btn" onclick="removeSelectedFile()">移除</button>
+            </div>
+
+            <div class="form-group">
+                <label for="excelTaskInput">任务模板（使用 {content} 作为问题占位符）</label>
+                <textarea
+                    id="excelTaskInput"
+                    class="form-control"
+                    placeholder="例如：请回答这个问题：{content}"
+                    style="min-height: 80px;"
+                ></textarea>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="saveScreenshotsInput">
+                        <span>保存截图</span>
+                    </label>
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="embedScreenshotsInput">
+                        <span>嵌入截图到 Excel</span>
+                    </label>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button id="previewBtn" class="btn" onclick="previewExcel()" style="background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);">
+                    📋 预览
+                </button>
+                <button id="excelBatchBtn" class="btn" onclick="executeExcelBatch()">
+                    ▶️ 开始执行
+                </button>
+            </div>
+
+            <!-- 预览区域 -->
+            <div id="previewArea" class="result-box" style="display: none; background: #fff3e0;">
+                <div class="result-title" style="color: #f57c00;">📋 Excel 内容预览:</div>
+                <div id="previewContent" style="margin-top: 10px; max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- 批量任务结果 -->
+            <div id="excelResultArea" class="result-box" style="display: none;">
+                <div class="result-title">执行结果:</div>
+                <div id="excelResultContent"></div>
+                <div id="excelProgressArea" style="margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 6px;">
+                    <div style="margin-bottom: 10px; font-weight: 600; color: #1976d2;">📊 执行进度</div>
+                    <div style="background: #fff; border-radius: 10px; overflow: hidden;">
+                        <div id="progressBar" style="width: 0%; height: 20px; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
+                    </div>
+                    <div id="progressText" style="text-align: center; margin-top: 8px; color: #666;">0 / 0</div>
+                    <div id="currentQuestion" style="text-align: center; margin-top: 5px; font-size: 13px; color: #999;"></div>
+                </div>
             </div>
         </div>
         
@@ -519,6 +676,7 @@
             loadStats();
             loadHistory();
             updateDeviceStatus();
+            initDropZone();
             // 每 10 秒自动刷新设备状态
             setInterval(updateDeviceStatus, 10000);
         });
@@ -692,5 +850,6 @@
             }
         }
     </script>
+    <script src="excel-batch.js"></script>
 </body>
 </html>

@@ -114,6 +114,18 @@ adb devices
 ```bash
 adb connect 192.168.1.100:5555  # 替换为您设备的 IP
 ```
+**添加应用包名（可选）**
+
+```bash
+#添加应用包名
+adb shell pm list packages #列出所有已安装 App 的包名（简洁版）
+
+#获取当前运行的APP包名
+adb shell dumpsys window | findstr mCurrentFocus  # Windows 系统
+# 或
+adb shell dumpsys window | grep mCurrentFocus    # Mac/Linux 系统
+```
+
 
 ### 第四步：配置 AI 模型
 
@@ -250,12 +262,13 @@ python3 main.py "打开抖音搜索猫咪视频"
 python3 server.py
 ```
 
-浏览器打开：**http://localhost:5000**
+浏览器打开：**http://localhost:5001**
 
 可以看到：
 - 📊 任务执行面板
 - 📈 统计信息
 - 📜 历史记录
+- 📦 Excel 批量任务（支持拖放上传、预览、批量执行、截图嵌入）
 
 ---
 
@@ -293,15 +306,73 @@ python main.py --batch results.xlsx --skip-existing
 读取 Excel 内容，让智能体在手机上执行相关任务：
 
 ```bash
-# 读取 Excel，打开微信发送给某人
-python excel_task.py --file 工作簿 2.xlsx --task "打开微信，给峰峰峰回路转发送文档里的所有问题"
+# 读取 Excel，打开微信发送给某人（默认只保存答案文本）
+python excel_task.py --file a.xlsx --task "打开微信，给峰峰峰回路转发送文档里的所有问题"
 
 # 指定列名
-python excel_task.py --file questions.xlsx --column 问题 --task "打开微信，把所有问题发给张三"
+python excel_task.py --file a.xlsx --column 问题 --task "打开微信，把所有问题发给张三"
 
 # 先预览内容
-python excel_task.py --file 工作簿 2.xlsx --preview
+python excel_task.py --file a.xlsx --preview
+
+# 保存截图并嵌入到 Excel 文档中
+python excel_task.py --file a.xlsx --task "..." --embed-screenshot --save-screenshots
+
+# 保存截图路径（不嵌入，只保存路径）
+python excel_task.py --file a.xlsx --task "..." --save-screenshots
+
+# 指定输出文件和截图目录
+python excel_task.py --file a.xlsx --task "..." --output result.xlsx --save-screenshots --screenshot-dir ./my_screenshots
 ```
+
+**Excel 文件格式（执行后自动添加列）：**
+
+| 问题 | 答案 | 状态 |
+|------|------|------|
+| 打开微信并查看最后一条消息 | 任务完成 | 成功 |
+| 在淘宝搜索 iPhone 15 | 已搜索到相关结果 | 成功 |
+
+**使用 `--save-screenshots --embed-screenshot` 参数后，截图会直接显示在 Excel 中：**
+
+| 问题 | 答案 | 截图 | 状态 |
+|------|------|------|------|
+| 打开微信... | 任务完成 | [截图图片] | 成功 |
+
+**默认行为（不使用 `--save-screenshots`）：**
+- 只保存"答案"和"状态"列
+- 不创建"截图路径"列
+- 不保存任何图片文件
+
+### 2.5 Web 界面 Excel 批量任务（推荐）
+
+启动 Web 服务器后，可以在浏览器界面中直接使用 Excel 批量任务功能：
+
+```bash
+python3 server.py
+```
+
+浏览器打开：**http://localhost:5001**
+
+在"📊 Excel 批量任务"卡片中：
+
+**方式一：拖放上传（推荐）**
+- 将 Excel/TXT 文件直接拖拽到上传区域
+
+**方式二：点击选择**
+- 点击上传区域选择文件
+
+**然后：**
+1. 输入任务模板（使用 `{content}` 作为问题占位符，如：`请回答：{content}`）
+2. 可选：勾选"保存截图"保存截图文件
+3. 可选：勾选"嵌入截图到 Excel"将截图直接插入 Excel 单元格
+4. 点击"📋 预览"查看 Excel 内容和问题列表
+5. 点击"▶️ 开始执行"执行批量任务
+
+**执行过程显示：**
+- 📊 实时进度条
+- ✅/❌ 每个问题的执行状态
+- 📈 成功/失败统计
+- 💾 输出文件路径
 
 ### 3. 坐标优化（小参数模型）
 
@@ -327,6 +398,8 @@ python test_coordinate_optimization.py
 | `python main.py --list-apps` | 查看支持的应用 |
 | `python main.py --batch 文件.xlsx` | 批量执行任务 |
 | `python excel_task.py --file 文件.xlsx --task "任务"` | Excel 任务执行 |
+| `python excel_task.py --file 文件.xlsx --task "任务" --embed-screenshot` | Excel 任务执行并嵌入截图 |
+| `python server.py` | 启动 Web 界面（含 Excel 批量任务功能） |
 | `python test_coordinate_optimization.py` | 测试坐标优化 |
 
 ---
@@ -377,6 +450,27 @@ adb devices
 **Q7: 批量任务报错 "pandas not installed"？**
 ```bash
 pip install pandas openpyxl
+```
+
+**Q8: 如何将截图直接嵌入到 Excel 文档中？**
+```bash
+# 使用 --save-screenshots 和 --embed-screenshot 参数
+python excel_task.py --file a.xlsx --task "..." --save-screenshots --embed-screenshot
+
+# 截图会自动显示在 Excel 的"截图"列中，无需手动插入图片
+```
+
+**Q9: 嵌入的截图保存在哪里？**
+- 截图会同时保存为 PNG 文件（默认在 `./excel_screenshots` 目录）
+- 并且直接嵌入到 Excel 文档中，打开 Excel 即可看到
+- 即使删除 PNG 文件，Excel 中的截图仍然可见
+
+**Q10: 不想保存截图，只想保存答案文本怎么办？**
+```bash
+# 默认行为，无需额外参数
+python excel_task.py --file a.xlsx --task "..."
+
+# 执行后 Excel 只包含"问题"、"答案"、"状态"列，不保存任何截图
 ```
 
 ---

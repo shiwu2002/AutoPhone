@@ -15,7 +15,7 @@ from phone_agent.history import get_history_manager
 from phone_agent.model import ModelConfig
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='templates', static_url_path='')
 # 启用 CORS 支持跨域请求
 CORS(app)
 
@@ -483,7 +483,262 @@ def search_history():
             'count': len(records),
             'records': [record.to_dict() for record in records]
         })
-        
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# 导入 excel_task 模块中的函数
+from excel_task import process_excel_questions
+
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """
+    上传文件端点，支持拖放上传 Excel/TXT 文件
+
+    响应 (JSON):
+    {
+        "success": true,
+        "file_path": "保存的文件路径",
+        "filename": "原始文件名"
+    }
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': '没有文件上传'
+            }), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': '文件名为空'
+            }), 400
+
+        # 检查文件扩展名
+        allowed_extensions = {'xlsx', 'xls', 'txt'}
+        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+
+        if ext not in allowed_extensions:
+            return jsonify({
+                'success': False,
+                'error': f'不支持的文件格式：.{ext}，请上传 .xlsx, .xls 或 .txt 文件'
+            }), 400
+
+        # 保存到 uploads 目录
+        from pathlib import Path
+        import uuid
+
+        upload_dir = Path(__file__).parent / 'uploads'
+        upload_dir.mkdir(exist_ok=True)
+
+        # 生成唯一的文件名
+        original_name = file.filename
+        safe_name = f"{uuid.uuid4().hex}_{original_name}"
+        file_path = upload_dir / safe_name
+
+        file.save(str(file_path))
+
+        return jsonify({
+            'success': True,
+            'file_path': str(file_path),
+            'filename': original_name
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/excel/batch', methods=['POST'])
+def excel_batch_task():
+    """
+    Excel 批量任务执行端点
+
+    请求体 (JSON):
+    {
+        "file": "Excel 文件路径",
+        "task": "任务模板，可以使用 {content} 占位符",
+        "column": "问题列名（可选）",
+        "output": "输出文件路径（可选）",
+        "save_screenshots": "是否保存截图（可选，默认 false）",
+        "embed_screenshot": "是否嵌入截图（可选，默认 false）",
+        "max_questions": "最大问题数（可选，0=全部）"
+    }
+
+    响应 (JSON):
+    {
+        "success": true,
+        "results": [
+            {"question": "...", "answer": "...", "success": true, ...}
+        ],
+        "output_file": "输出文件路径",
+        "statistics": {"total": 4, "success": 3, "failed": 1}
+    }
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                'success': False,
+                'error': 'Request must be JSON'
+            }), 400
+
+        data = request.get_json()
+
+        if not data or 'file' not in data or 'task' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: file or task'
+            }), 400
+
+        # 加载配置
+        config = load_config()
+        model_config_data = config.get('model', {})
+        agent_config_data = config.get('agent', {})
+
+        # 创建配置
+        model_cfg = ModelConfig(
+            base_url=model_config_data.get('base_url', 'http://localhost:11434/v1'),
+            model_name=model_config_data.get('model_name', 'qwen3.5:4b'),
+            api_key=model_config_data.get('api_key', 'ollama'),
+            use_thinking=model_config_data.get('use_thinking', False),
+            lang=agent_config_data.get('lang', 'cn')
+        )
+
+        agent_cfg = AgentConfig(
+            max_steps=agent_config_data.get('max_steps', 50),
+            verbose=agent_config_data.get('verbose', True),
+            lang=agent_config_data.get('lang', 'cn')
+        )
+
+        # 确定输出文件
+        from pathlib import Path
+        output_file = data.get('output')
+        if not output_file:
+            input_path = Path(data['file'])
+            output_file = str(input_path.parent / f"{input_path.stem}_results{input_path.suffix}")
+
+        # 执行批量任务
+        results = process_excel_questions(
+            excel_path=data['file'],
+            task_template=data['task'],
+            output_path=output_file,
+            model_cfg=model_cfg,
+            agent_cfg=agent_cfg,
+            save_screenshots=data.get('save_screenshots', False),
+            screenshot_dir=data.get('screenshot_dir', './excel_screenshots'),
+            embed_screenshot=data.get('embed_screenshot', False),
+            column=data.get('column')
+        )
+
+        # 统计
+        success_count = sum(1 for r in results if r.get('success', False))
+
+        return jsonify({
+            'success': True,
+            'results': results,
+            'output_file': output_file,
+            'statistics': {
+                'total': len(results),
+                'success': success_count,
+                'failed': len(results) - success_count
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/excel/preview', methods=['POST'])
+def excel_preview():
+    """
+    预览 Excel 文件内容
+
+    请求体 (JSON):
+    {
+        "file": "Excel 文件路径",
+        "column": "列名（可选）"
+    }
+
+    响应 (JSON):
+    {
+        "success": true,
+        "columns": ["问题", "答案", "状态"],
+        "questions": ["问题 1", "问题 2", ...],
+        "count": 10
+    }
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                'success': False,
+                'error': 'Request must be JSON'
+            }), 400
+
+        data = request.get_json()
+
+        if not data or 'file' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: file'
+            }), 400
+
+        if not PANDAS_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'pandas not installed'
+            }), 400
+
+        import pandas as pd
+        from pathlib import Path
+
+        path = Path(data['file'])
+        if not path.exists():
+            return jsonify({
+                'success': False,
+                'error': f'File not found: {data["file"]}'
+            }), 400
+
+        # 读取 Excel
+        df = pd.read_excel(path)
+        columns = df.columns.tolist()
+
+        # 查找问题列
+        question_col = data.get('column')
+        if not question_col:
+            for col in columns:
+                if '问题' in col.lower() or 'question' in col.lower():
+                    question_col = col
+                    break
+            if not question_col:
+                question_col = columns[0]
+
+        # 获取问题列表
+        questions = df[question_col].dropna().astype(str).tolist()
+        questions = [q.strip() for q in questions if q.strip() and q != 'nan']
+
+        return jsonify({
+            'success': True,
+            'columns': columns,
+            'question_column': question_col,
+            'questions': questions,
+            'count': len(questions)
+        })
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -495,17 +750,20 @@ if __name__ == '__main__':
     print("=" * 50)
     print("Phone Agent HTTP Server")
     print("=" * 50)
-    print("Starting server on http://localhost:5000")
+    print("Starting server on http://localhost:5001")
     print("\nAvailable endpoints:")
-    print("  GET  /health     - Health check")
-    print("  POST /run        - Simple task execution (uses config.json)")
-    print("  POST /execute    - Advanced task execution (can override config)")
-    print("  GET  /config     - Get current configuration")
-    print("  POST /config     - Update configuration")
-    print("  GET  /history    - Get task history")
+    print("  GET  /health      - Health check")
+    print("  POST /run         - Simple task execution (uses config.json)")
+    print("  POST /execute     - Advanced task execution (can override config)")
+    print("  POST /upload      - File upload (drag & drop support)")
+    print("  POST /excel/batch - Excel batch task execution")
+    print("  POST /excel/preview - Preview Excel file content")
+    print("  GET  /config      - Get current configuration")
+    print("  POST /config      - Update configuration")
+    print("  GET  /history     - Get task history")
     print("  GET  /history/stats - Get statistics")
     print("  GET  /history/search - Search history")
     print("=" * 50)
-    
+
     # 启动 Flask 服务器
     app.run(host='0.0.0.0', port=5001, debug=False)
