@@ -25,7 +25,8 @@
       "Bash(python -c \"from phone_agent.adb.screenshot import get_screenshot; s = get_screenshot\\(enable_compression=True\\); print\\(f''OK: {s.width}x{s.height}''\\)\")",
       "Bash(python3 -c \":*)",
       "Bash(python -c \"from phone_agent.batch_runner import BatchQuestionRunner, BatchConfig; print\\(''batch_runner imports OK''\\)\")",
-      "Bash(python excel_task.py --help)"
+      "Bash(python excel_task.py --help)",
+      "Read(//Volumes/data/python/**)"
     ]
   }
 }
