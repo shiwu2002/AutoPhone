@@ -116,21 +116,37 @@ class ActionHandler:
         return handlers.get(action_name)
 
     def _convert_relative_to_absolute(
-        self, element: list[int], screenshot: Screenshot
-    ) -> tuple[int, int]:
-        """将相对坐标 (0-1000) 转换为绝对像素。"""
-        # 如果存在 mapper，说明图片被压缩了，需要将 1K 坐标转换回原始分辨率
-        if screenshot.mapper is not None:
-            # 先将相对坐标转换为 1K 分辨率的绝对坐标
-            x_1k = int(element[0] / 1000 * screenshot.width)
-            y_1k = int(element[1] / 1000 * screenshot.height)
-            # 再通过 mapper 转换回原始分辨率
-            return screenshot.mapper.to_original_coordinate(x_1k, y_1k)
-        else:
+        self, element: list[int], screenshot: Screenshot,
+        use_region: bool = False,
+    ) -> tuple[int, int] | tuple[tuple[int, int], tuple[int, int]]:
+        """
+        将相对坐标 (0-1000) 转换为绝对像素。
+
+        Args:
+            element: [x, y] 相对坐标
+            screenshot: Screenshot 对象
+            use_region: 是否返回区域而非单点（针对小参数模型）
+
+        Returns:
+            如果是单点：(x, y)
+            如果是区域：((x1, y1), (x2, y2)) 区域对角点
+        """
+        if screenshot.mapper is None:
             # 没有压缩，直接转换
             x = int(element[0] / 1000 * screenshot.width)
             y = int(element[1] / 1000 * screenshot.height)
-            return x, y
+            return (x, y) if not use_region else ((x, y), (x, y))
+
+        # 将相对坐标转换为 1K 分辨率的绝对坐标
+        x_1k = element[0] / 1000 * screenshot.width
+        y_1k = element[1] / 1000 * screenshot.height
+
+        if use_region:
+            # 返回一个区域，提高容错率
+            return screenshot.mapper.to_original_region(x_1k, y_1k)
+        else:
+            # 返回单点（带偏移优化）
+            return screenshot.mapper.to_original_coordinate(x_1k, y_1k, add_click_offset=True)
 
     def _handle_launch(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
         """处理启动应用动作。"""

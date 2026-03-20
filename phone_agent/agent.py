@@ -223,6 +223,9 @@ class PhoneAgent:
                 logger.info(response.thinking)
         except Exception as e:
             logger.error(f"Model request failed: {e}", exc_info=True)
+            # Remove the user message we just added to avoid duplicate requests on retry
+            if not is_first:
+                self._context.pop()
             return StepResult(
                 success=False,
                 finished=True,

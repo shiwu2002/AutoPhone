@@ -27,7 +27,14 @@ from phone_agent.device_factory import DeviceType, get_device_factory, set_devic
 from phone_agent.model import ModelConfig
 from phone_agent.utils.logger import setup_logger, LOG_LEVELS
 
-# 初始化 logger
+# Try to import pandas for batch mode
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+
+# Initialize logger
 logger = setup_logger(__name__, level=logging.INFO)
 
 
@@ -187,6 +194,113 @@ def check_system_requirements(
         print("❌ System check failed. Please fix the issues above.")
 
     return all_passed
+
+
+def run_batch_mode(args) -> None:
+    """运行批量模式。"""
+    from phone_agent.batch_runner import BatchQuestionRunner, BatchConfig
+
+    print("=" * 60)
+    print("Phone Agent - Batch Mode")
+    print("=" * 60)
+
+    # Set device type
+    device_type = DeviceType.ADB
+    set_device_type(device_type)
+
+    # 加载配置
+    config = load_config()
+    model_config_dict = config.get('model', {})
+    agent_config_dict = config.get('agent', {})
+
+    # 创建模型配置
+    model_cfg = ModelConfig(
+        base_url=args.base_url or model_config_dict.get('base_url', 'http://localhost:11434/v1'),
+        model_name=args.model or model_config_dict.get('model_name', 'qwen3.5:4b'),
+        api_key=args.apikey or model_config_dict.get('api_key', 'ollama'),
+        use_thinking=model_config_dict.get('use_thinking', False),
+        lang=args.lang,
+    )
+
+    # 创建批量配置
+    batch_cfg = BatchConfig(
+        question_column=args.question_column,
+        max_questions=args.max_questions,
+        skip_existing=args.skip_existing,
+        verbose=args.verbose or (not args.quiet),
+        max_steps=agent_config_dict.get('max_steps', 50),
+    )
+
+    print(f"Input file:      {args.batch}")
+    print(f"Output file:     {args.batch_output}")
+    print(f"Question column: {args.question_column}")
+    print(f"Max questions:   {args.max_questions if args.max_questions > 0 else 'All'}")
+    print(f"Skip existing:   {args.skip_existing}")
+    print(f"Model:           {model_cfg.model_name}")
+    print("=" * 60)
+
+    # 检查 pandas 是否可用
+    if not PANDAS_AVAILABLE:
+        print("\n⚠️  Warning: pandas not installed. Excel support requires pandas.")
+        print("   Install with: pip install pandas openpyxl\n")
+
+    # 创建执行器
+    runner = BatchQuestionRunner(model_config=model_cfg, batch_config=batch_cfg)
+
+    # 如果跳过已有答案，先加载现有结果
+    if args.skip_existing and args.batch.lower().endswith(('.xlsx', '.xls')):
+        print("\nLoading existing results...")
+        # 这里可以扩展 batch_runner 支持从输入文件加载已有结果
+
+    # 加载问题
+    print(f"\nLoading questions from {args.batch}...")
+    try:
+        runner.load_questions(args.batch, column=args.question_column)
+    except Exception as e:
+        print(f"❌ Failed to load questions: {e}")
+        return
+
+    # 运行系统检查
+    if not check_system_requirements(device_type, args):
+        print("\n⚠️  System check failed, continuing anyway...")
+
+    # 执行批量任务
+    print("\nStarting batch execution...\n")
+    try:
+        results = runner.run_batch()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user.")
+        # 保存进度
+        runner._save_progress()
+        print("Progress saved to batch_progress.json")
+        return
+    except Exception as e:
+        print(f"\n❌ Batch execution failed: {e}")
+        return
+
+    # 导出结果
+    print(f"\nExporting results to {args.batch_output}...")
+    try:
+        runner.export_results(args.batch_output, format="excel")
+    except Exception as e:
+        print(f"❌ Failed to export results: {e}")
+        # 尝试导出为 JSON
+        json_output = args.batch_output.rsplit('.', 1)[0] + '.json'
+        runner.export_results(json_output, format="json")
+        print(f"Results exported to {json_output} instead.")
+
+    # 打印统计
+    success_count = sum(1 for r in results if r.success)
+    failed_count = len(results) - success_count
+
+    print("\n" + "=" * 60)
+    print("Batch Execution Summary")
+    print("=" * 60)
+    print(f"Total questions:  {len(results)}")
+    print(f"Successful:       {success_count}")
+    print(f"Failed:           {failed_count}")
+    print(f"Success rate:     {success_count/len(results)*100:.1f}%" if results else "N/A")
+    print("=" * 60)
 
 
 def check_model_api(base_url: str, model_name: str, api_key: str = "EMPTY") -> bool:
@@ -442,6 +556,95 @@ Examples:
 
     parser.add_argument(
         "--config", action="store_true", help="Interactive configuration wizard for local model setup"
+    )
+
+    # Batch mode options
+    parser.add_argument(
+        "--batch",
+        type=str,
+        metavar="FILE",
+        help="Run in batch mode with questions from file (Excel or TXT)",
+    )
+    parser.add_argument(
+        "--batch-output",
+        type=str,
+        default="batch_results.xlsx",
+        help="Output file for batch results (default: batch_results.xlsx)",
+    )
+    parser.add_argument(
+        "--question-column",
+        type=str,
+        default="问题",
+        help="Column name for questions in Excel (default: 问题)",
+    )
+    parser.add_argument(
+        "--max-questions",
+        type=int,
+        default=0,
+        help="Maximum number of questions to process (0=all)",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip questions that already have answers in the input file",
+    )
+
+    # Timing options
+    parser.add_argument(
+        "--keyboard-switch-delay", type=float, default=None,
+        help="Delay after switching to ADB keyboard (seconds)"
+    )
+    parser.add_argument(
+        "--text-clear-delay", type=float, default=None,
+        help="Delay after clearing text (seconds)"
+    )
+    parser.add_argument(
+        "--text-input-delay", type=float, default=None,
+        help="Delay after typing text (seconds)"
+    )
+    parser.add_argument(
+        "--keyboard-restore-delay", type=float, default=None,
+        help="Delay after restoring original keyboard (seconds)"
+    )
+    parser.add_argument(
+        "--tap-delay", type=float, default=None,
+        help="Default delay after tap (seconds)"
+    )
+    parser.add_argument(
+        "--double-tap-delay", type=float, default=None,
+        help="Default delay after double tap (seconds)"
+    )
+    parser.add_argument(
+        "--double-tap-interval", type=float, default=None,
+        help="Interval between two taps in double tap (seconds)"
+    )
+    parser.add_argument(
+        "--long-press-delay", type=float, default=None,
+        help="Default delay after long press (seconds)"
+    )
+    parser.add_argument(
+        "--swipe-delay", type=float, default=None,
+        help="Default delay after swipe (seconds)"
+    )
+    parser.add_argument(
+        "--back-delay", type=float, default=None,
+        help="Default delay after back button (seconds)"
+    )
+    parser.add_argument(
+        "--home-delay", type=float, default=None,
+        help="Default delay after home button (seconds)"
+    )
+    parser.add_argument(
+        "--launch-delay", type=float, default=None,
+        help="Default delay after launching app (seconds)"
+    )
+    parser.add_argument(
+        "--adb-restart-delay", type=float, default=None,
+        help="Wait time after enabling TCP/IP mode (seconds)"
+    )
+    parser.add_argument(
+        "--server-restart-delay", type=float, default=None,
+        help="Wait time between killing and starting ADB server (seconds)"
     )
 
     parser.add_argument(
@@ -723,6 +926,9 @@ def run_config_wizard():
     # ========== Device Configuration ==========
     _configure_device_interactive(config, device_config)
 
+    # ========== Advanced Configuration (Timing) ==========
+    _configure_timing_interactive(config)
+
     # Save all configurations
     _save_config_interactive(config, config_path)
 
@@ -796,6 +1002,174 @@ def _configure_device_interactive(config: dict, device_config: dict):
     print("✅ Device configuration saved!")
 
 
+def _configure_timing_interactive(config: dict):
+    """Configure timing settings interactively."""
+    print()
+    print("=" * 50)
+    print("4. Advanced Configuration (Timing)")
+    print("=" * 50)
+    print()
+
+    timing_config = config.get('timing', {})
+
+    # Ask if user wants to configure timing settings
+    configure_timing = input("Would you like to configure timing settings? [y/N]: ").strip().lower()
+    if configure_timing not in ('y', 'yes'):
+        print("⏭️  Skipping advanced timing configuration.")
+        return
+
+    print()
+    print("Timing settings control delays between actions.")
+    print("You can accept defaults by pressing Enter for each option.")
+    print()
+
+    # Action timing
+    action_config = timing_config.get('action', {})
+    print("--- Action Timing ---")
+    default_value = action_config.get('keyboard_switch_delay', 1.0)
+    value = input(f"Keyboard switch delay (seconds) [{default_value}]: ").strip()
+    keyboard_switch_delay = float(value) if value else default_value
+
+    default_value = action_config.get('text_clear_delay', 1.0)
+    value = input(f"Text clear delay (seconds) [{default_value}]: ").strip()
+    text_clear_delay = float(value) if value else default_value
+
+    default_value = action_config.get('text_input_delay', 1.0)
+    value = input(f"Text input delay (seconds) [{default_value}]: ").strip()
+    text_input_delay = float(value) if value else default_value
+
+    default_value = action_config.get('keyboard_restore_delay', 1.0)
+    value = input(f"Keyboard restore delay (seconds) [{default_value}]: ").strip()
+    keyboard_restore_delay = float(value) if value else default_value
+
+    config['timing'] = {
+        'action': {
+            'keyboard_switch_delay': keyboard_switch_delay,
+            'text_clear_delay': text_clear_delay,
+            'text_input_delay': text_input_delay,
+            'keyboard_restore_delay': keyboard_restore_delay
+        }
+    }
+
+    # Device timing
+    device_config = timing_config.get('device', {})
+    print()
+    print("--- Device Timing ---")
+    default_value = device_config.get('default_tap_delay', 1.0)
+    value = input(f"Tap delay (seconds) [{default_value}]: ").strip()
+    default_tap_delay = float(value) if value else default_value
+
+    default_value = device_config.get('default_double_tap_delay', 1.0)
+    value = input(f"Double tap delay (seconds) [{default_value}]: ").strip()
+    default_double_tap_delay = float(value) if value else default_value
+
+    default_value = device_config.get('double_tap_interval', 0.1)
+    value = input(f"Double tap interval (seconds) [{default_value}]: ").strip()
+    double_tap_interval = float(value) if value else default_value
+
+    default_value = device_config.get('default_long_press_delay', 1.0)
+    value = input(f"Long press delay (seconds) [{default_value}]: ").strip()
+    default_long_press_delay = float(value) if value else default_value
+
+    default_value = device_config.get('default_swipe_delay', 1.0)
+    value = input(f"Swipe delay (seconds) [{default_value}]: ").strip()
+    default_swipe_delay = float(value) if value else default_value
+
+    default_value = device_config.get('default_back_delay', 1.0)
+    value = input(f"Back delay (seconds) [{default_value}]: ").strip()
+    default_back_delay = float(value) if value else default_value
+
+    default_value = device_config.get('default_home_delay', 1.0)
+    value = input(f"Home delay (seconds) [{default_value}]: ").strip()
+    default_home_delay = float(value) if value else default_value
+
+    default_value = device_config.get('default_launch_delay', 1.0)
+    value = input(f"Launch delay (seconds) [{default_value}]: ").strip()
+    default_launch_delay = float(value) if value else default_value
+
+    config['timing']['device'] = {
+        'default_tap_delay': default_tap_delay,
+        'default_double_tap_delay': default_double_tap_delay,
+        'double_tap_interval': double_tap_interval,
+        'default_long_press_delay': default_long_press_delay,
+        'default_swipe_delay': default_swipe_delay,
+        'default_back_delay': default_back_delay,
+        'default_home_delay': default_home_delay,
+        'default_launch_delay': default_launch_delay
+    }
+
+    # Connection timing
+    connection_config = timing_config.get('connection', {})
+    print()
+    print("--- Connection Timing ---")
+    default_value = connection_config.get('adb_restart_delay', 2.0)
+    value = input(f"ADB restart delay (seconds) [{default_value}]: ").strip()
+    adb_restart_delay = float(value) if value else default_value
+
+    default_value = connection_config.get('server_restart_delay', 1.0)
+    value = input(f"Server restart delay (seconds) [{default_value}]: ").strip()
+    server_restart_delay = float(value) if value else default_value
+
+    config['timing']['connection'] = {
+        'adb_restart_delay': adb_restart_delay,
+        'server_restart_delay': server_restart_delay
+    }
+
+    print()
+    print("✅ Timing configuration saved!")
+
+
+def _apply_timing_config(timing_dict: dict, args) -> None:
+    """Apply timing configuration from config file and command line args."""
+    from phone_agent.config.timing import (
+        ActionTimingConfig,
+        DeviceTimingConfig,
+        ConnectionTimingConfig,
+        update_timing_config,
+    )
+
+    # Load from config file
+    action = ActionTimingConfig.from_dict(timing_dict.get('action', {}))
+    device = DeviceTimingConfig.from_dict(timing_dict.get('device', {}))
+    connection = ConnectionTimingConfig.from_dict(timing_dict.get('connection', {}))
+
+    # Override with command line args if provided
+    if args.keyboard_switch_delay is not None:
+        action.keyboard_switch_delay = args.keyboard_switch_delay
+    if args.text_clear_delay is not None:
+        action.text_clear_delay = args.text_clear_delay
+    if args.text_input_delay is not None:
+        action.text_input_delay = args.text_input_delay
+    if args.keyboard_restore_delay is not None:
+        action.keyboard_restore_delay = args.keyboard_restore_delay
+
+    if args.tap_delay is not None:
+        device.default_tap_delay = args.tap_delay
+    if args.double_tap_delay is not None:
+        device.default_double_tap_delay = args.double_tap_delay
+    if args.double_tap_interval is not None:
+        device.double_tap_interval = args.double_tap_interval
+    if args.long_press_delay is not None:
+        device.default_long_press_delay = args.long_press_delay
+    if args.swipe_delay is not None:
+        device.default_swipe_delay = args.swipe_delay
+    if args.back_delay is not None:
+        device.default_back_delay = args.back_delay
+    if args.home_delay is not None:
+        device.default_home_delay = args.home_delay
+    if args.launch_delay is not None:
+        device.default_launch_delay = args.launch_delay
+
+    if args.adb_restart_delay is not None:
+        connection.adb_restart_delay = args.adb_restart_delay
+    if args.server_restart_delay is not None:
+        connection.server_restart_delay = args.server_restart_delay
+
+    # Update global timing config
+    from phone_agent.config.timing import update_timing_config
+    update_timing_config(action=action, device=device, connection=connection)
+
+
 def _print_config_summary(config: dict):
     """Print configuration summary."""
     print()
@@ -806,6 +1180,7 @@ def _print_config_summary(config: dict):
     model = config.get('model', {})
     agent = config.get('agent', {})
     device = config.get('device', {})
+    timing = config.get('timing', {})
 
     print(f"Model Type:      {model.get('type', 'unknown')}")
     print(f"Model Name:      {model.get('model_name', 'unknown')}")
@@ -816,6 +1191,23 @@ def _print_config_summary(config: dict):
     print(f"Max Steps:       {agent.get('max_steps', 0) if agent.get('max_steps', 0) > 0 else 'Unlimited'}")
     print(f"Verbose Output:  {'Yes' if agent.get('verbose') else 'No'}")
     print(f"Auto-connect:    {'Yes' if device.get('auto_connect') else 'No'}")
+
+    # Show timing summary if configured
+    if timing:
+        print()
+        print("Timing Settings:")
+        action = timing.get('action', {})
+        device_timing = timing.get('device', {})
+        connection = timing.get('connection', {})
+        if action:
+            print(f"  Action delays: keyboard={action.get('keyboard_switch_delay', 1.0)}s, "
+                  f"text_input={action.get('text_input_delay', 1.0)}s")
+        if device_timing:
+            print(f"  Device delays: tap={device_timing.get('default_tap_delay', 1.0)}s, "
+                  f"swipe={device_timing.get('default_swipe_delay', 1.0)}s")
+        if connection:
+            print(f"  Connection delays: adb_restart={connection.get('adb_restart_delay', 2.0)}s")
+
     print("=" * 50)
     print()
     print("You can now run the agent with:")
@@ -848,6 +1240,11 @@ def main():
 
         return
 
+    # Handle --batch mode
+    if args.batch:
+        run_batch_mode(args)
+        return
+
     # Handle device commands (these may need partial system checks)
     if handle_device_commands(args):
         return
@@ -860,9 +1257,13 @@ def main():
     if not check_model_api(args.base_url, args.model, args.apikey):
         sys.exit(1)
 
+    # Load timing configuration from config file and apply command line overrides
+    config = load_config()
+    timing_dict = config.get('timing', {})
+    _apply_timing_config(timing_dict, args)
+
     # Create configurations and agent based on device type
     # Load config from file for extra options
-    config = load_config()
     model_config_dict = config.get('model', {})
 
     model_config = ModelConfig(

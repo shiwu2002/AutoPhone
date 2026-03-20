@@ -4,8 +4,11 @@
 用户可以通过修改此文件或设置环境变量来自定义这些值。
 """
 
+import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -32,6 +35,27 @@ class ActionTimingConfig:
         self.keyboard_restore_delay = float(
             os.getenv("PHONE_AGENT_KEYBOARD_RESTORE_DELAY", self.keyboard_restore_delay)
         )
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ActionTimingConfig":
+        """从字典创建配置。"""
+        if not data:
+            return cls()
+        return cls(
+            keyboard_switch_delay=data.get('keyboard_switch_delay', 1.0),
+            text_clear_delay=data.get('text_clear_delay', 1.0),
+            text_input_delay=data.get('text_input_delay', 1.0),
+            keyboard_restore_delay=data.get('keyboard_restore_delay', 1.0),
+        )
+
+    def to_dict(self) -> dict:
+        """将配置转换为字典。"""
+        return {
+            'keyboard_switch_delay': self.keyboard_switch_delay,
+            'text_clear_delay': self.text_clear_delay,
+            'text_input_delay': self.text_input_delay,
+            'keyboard_restore_delay': self.keyboard_restore_delay,
+        }
 
 
 @dataclass
@@ -75,6 +99,35 @@ class DeviceTimingConfig:
             os.getenv("PHONE_AGENT_LAUNCH_DELAY", self.default_launch_delay)
         )
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "DeviceTimingConfig":
+        """从字典创建配置。"""
+        if not data:
+            return cls()
+        return cls(
+            default_tap_delay=data.get('default_tap_delay', 1.0),
+            default_double_tap_delay=data.get('default_double_tap_delay', 1.0),
+            double_tap_interval=data.get('double_tap_interval', 0.1),
+            default_long_press_delay=data.get('default_long_press_delay', 1.0),
+            default_swipe_delay=data.get('default_swipe_delay', 1.0),
+            default_back_delay=data.get('default_back_delay', 1.0),
+            default_home_delay=data.get('default_home_delay', 1.0),
+            default_launch_delay=data.get('default_launch_delay', 1.0),
+        )
+
+    def to_dict(self) -> dict:
+        """将配置转换为字典。"""
+        return {
+            'default_tap_delay': self.default_tap_delay,
+            'default_double_tap_delay': self.default_double_tap_delay,
+            'double_tap_interval': self.double_tap_interval,
+            'default_long_press_delay': self.default_long_press_delay,
+            'default_swipe_delay': self.default_swipe_delay,
+            'default_back_delay': self.default_back_delay,
+            'default_home_delay': self.default_home_delay,
+            'default_launch_delay': self.default_launch_delay,
+        }
+
 
 @dataclass
 class ConnectionTimingConfig:
@@ -95,6 +148,23 @@ class ConnectionTimingConfig:
             os.getenv("PHONE_AGENT_SERVER_RESTART_DELAY", self.server_restart_delay)
         )
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "ConnectionTimingConfig":
+        """从字典创建配置。"""
+        if not data:
+            return cls()
+        return cls(
+            adb_restart_delay=data.get('adb_restart_delay', 2.0),
+            server_restart_delay=data.get('server_restart_delay', 1.0),
+        )
+
+    def to_dict(self) -> dict:
+        """将配置转换为字典。"""
+        return {
+            'adb_restart_delay': self.adb_restart_delay,
+            'server_restart_delay': self.server_restart_delay,
+        }
+
 
 @dataclass
 class TimingConfig:
@@ -104,16 +174,80 @@ class TimingConfig:
     device: DeviceTimingConfig
     connection: ConnectionTimingConfig
 
-    def __init__(self):
+    def __init__(
+        self,
+        action: Optional[ActionTimingConfig] = None,
+        device: Optional[DeviceTimingConfig] = None,
+        connection: Optional[ConnectionTimingConfig] = None,
+    ):
         """初始化所有时序配置。"""
-        self.action = ActionTimingConfig()
-        self.device = DeviceTimingConfig()
-        self.connection = ConnectionTimingConfig()
+        self.action = action or ActionTimingConfig()
+        self.device = device or DeviceTimingConfig()
+        self.connection = connection or ConnectionTimingConfig()
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TimingConfig":
+        """从字典创建配置。"""
+        if not data:
+            return cls()
+        return cls(
+            action=ActionTimingConfig.from_dict(data.get('action', {})),
+            device=DeviceTimingConfig.from_dict(data.get('device', {})),
+            connection=ConnectionTimingConfig.from_dict(data.get('connection', {})),
+        )
+
+    def to_dict(self) -> dict:
+        """将配置转换为字典。"""
+        return {
+            'action': self.action.to_dict(),
+            'device': self.device.to_dict(),
+            'connection': self.connection.to_dict(),
+        }
+
+
+def _find_config_file() -> Optional[Path]:
+    """查找配置文件。"""
+    # 可能的配置文件路径
+    possible_paths = [
+        Path(__file__).parent.parent.parent / "config.json",
+        Path(__file__).parent / "config.json",
+        Path.cwd() / "config.json",
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return path
+    return None
+
+
+def load_timing_from_config(config_path: Optional[Path] = None) -> TimingConfig:
+    """
+    从配置文件加载时序配置。
+
+    Args:
+        config_path: 配置文件路径，如果为 None 则自动查找。
+
+    Returns:
+        加载的 TimingConfig 实例。
+    """
+    if config_path is None:
+        config_path = _find_config_file()
+
+    if config_path is None or not config_path.exists():
+        return TimingConfig()
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        timing_data = config.get('timing', {})
+        return TimingConfig.from_dict(timing_data)
+    except (json.JSONDecodeError, IOError):
+        return TimingConfig()
 
 
 # 全局时序配置实例
-# 用户可以通过环境变量或在运行时修改这些值
-TIMING_CONFIG = TimingConfig()
+# 用户可以通过环境变量、配置文件或在运行时修改这些值
+TIMING_CONFIG = load_timing_from_config()
 
 
 def get_timing_config() -> TimingConfig:
