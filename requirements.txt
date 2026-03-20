@@ -1,28 +1,41 @@
-Pillow>=12.0.0
-openai>=2.9.0
+# =========================================
+# PhoneAgent 依赖列表
+# =========================================
 
-# For iOS Support
-requests>=2.31.0
+# 核心依赖
+# -----------------------------------------
+Pillow>=10.0.0          # 图片处理（截图压缩等）
+openai>=2.9.0           # OpenAI 兼容 API 客户端
+requests>=2.31.0        # HTTP 请求（用于 API 调用、设备连接等）
+httpx>=0.25.0           # 高性能 HTTP 客户端
 
-# For Ollama thinking support
-ollama>=0.4.0
+# AI 模型支持
+# -----------------------------------------
+ollama>=0.4.0           # Ollama 本地模型支持（可选）
 
-# For HTTP Server
-flask>=3.0.0
-flask-cors>=4.0.0
+# Excel/CSV 文件处理（批量任务必需）
+# -----------------------------------------
+pandas>=2.0.0           # 数据处理（批量任务、历史记录等）
+openpyxl>=3.1.0         # Excel 文件读写（.xlsx 支持）
 
-# For Model Deployment
+# Web 服务器
+# -----------------------------------------
+flask>=3.0.0            # Web 服务器框架
+flask-cors>=4.0.0       # Flask 跨域支持
 
-## After installing sglang or vLLM, please run pip install -U transformers again to upgrade to 5.0.0rc0.
-## Any dependency conflicts related to Transformers can be ignored.
+# 可选：开发工具
+# -----------------------------------------
+# pytest>=7.0.0          # 测试框架
+# pytest-cov>=4.0.0      # 测试覆盖率
+# pre-commit>=4.5.0      # Git 钩子管理
+# black>=23.0.0          # 代码格式化
+# mypy>=1.0.0            # 类型检查
 
-# sglang>=0.5.6.post1
-# vllm>=0.12.0
+# 可选：模型部署（本地部署大模型）
+# -----------------------------------------
+# 注意：安装 sglang 或 vLLM 后，请运行 pip install -U transformers 升级到 5.0.0rc0
+# transformers 相关依赖冲突可以忽略
+
+# sglang>=0.5.6.post1   # 本地模型推理（需要 GPU）
+# vllm>=0.12.0          # 本地模型推理（需要 GPU）
 # transformers>=5.0.0rc0
-
-# Optional: for development
-pytest>=7.0.0
-pre-commit>=4.5.0
-black>=23.0.0
-mypy>=1.0.0
-pytest-cov>=4.0.0  # 测试覆盖率

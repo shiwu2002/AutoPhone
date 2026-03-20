@@ -8,6 +8,7 @@
 - **点外卖**："帮我点一杯咖啡，要拿铁"
 - **刷社交媒体**："打开抖音，看看最近的热门视频"
 - **购物**："在淘宝上搜索运动鞋"
+- **批量任务**：从 Excel 读取问题列表，自动执行并导出结果
 - **更多**：支持各种手机操作
 
 ## ⚡ 5 分钟快速上手
@@ -34,7 +35,7 @@
 ┌────────▼────────┐
 │   设备抽象层     │
 │ DeviceFactory   │
-│ ADB Wrapper │
+│ ADB Wrapper     │
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -92,7 +93,7 @@ sudo apt install android-tools-adb
 git clone https://github.com/yourusername/AutoPhone.git
 cd AutoPhone
 
-# 2. 安装依赖
+# 2. 安装依赖（包括 Excel 支持）
 pip3 install -r requirements.txt
 ```
 
@@ -175,6 +176,7 @@ python main.py --config
 - 设置最大执行步数（0=无限）
 - 选择界面语言
 - 配置自动连接设备
+- **配置坐标优化参数**（针对小参数模型）
 
 5. **手动配置 config.json（可选）**
 
@@ -196,6 +198,13 @@ python main.py --config
   "device": {
     "type": "adb",
     "auto_connect": true
+  },
+  "coordinate_optimization": {
+    "enabled": true,
+    "click_offset_x": 8,
+    "click_offset_y": 8,
+    "use_region_click": true,
+    "min_click_region": 30
   }
 }
 ```
@@ -212,6 +221,9 @@ python main.py --config
 | `agent.verbose` | 显示详细执行日志 | `true` |
 | `agent.lang` | 界面语言：`cn` 中文 / `en` 英文 | `cn` |
 | `device.auto_connect` | 启动时自动连接设备 | `true` |
+| `coordinate_optimization.enabled` | 启用坐标优化（小参数模型建议开启） | `true` |
+| `coordinate_optimization.click_offset_x` | X 方向点击偏移（像素） | `8` |
+| `coordinate_optimization.use_region_click` | 使用区域点击（提高容错率） | `true` |
 
 ### 第五步：运行！
 
@@ -247,27 +259,84 @@ python3 server.py
 
 ---
 
-## 💡 常用命令
+## 💡 高级功能
 
-**查看设备：**
+### 1. 批量任务（Excel/TXT）
+
+从文件读取问题列表，批量执行并导出结果：
+
 ```bash
-python3 main.py --list-devices
+# 安装依赖（首次使用）
+pip install pandas openpyxl
+
+# 基本用法
+python main.py --batch questions.xlsx --batch-output results.xlsx
+
+# 测试前 3 个问题
+python main.py --batch questions.xlsx --max-questions 3 --verbose
+
+# 断点续跑（跳过已有答案）
+python main.py --batch results.xlsx --skip-existing
 ```
 
-**查看支持的应用：**
+**Excel 文件格式：**
+
+| 问题 | 答案 | 截图路径 | 状态 |
+|------|------|----------|------|
+| 打开微信并查看最后一条消息 | | | |
+| 在淘宝搜索 iPhone 15 | | | |
+
+执行后自动填充答案、截图路径和状态。
+
+### 2. Excel 任务执行器
+
+读取 Excel 内容，让智能体在手机上执行相关任务：
+
 ```bash
-python3 main.py --list-apps
+# 读取 Excel，打开微信发送给某人
+python excel_task.py --file 工作簿 2.xlsx --task "打开微信，给峰峰峰回路转发送文档里的所有问题"
+
+# 指定列名
+python excel_task.py --file questions.xlsx --column 问题 --task "打开微信，把所有问题发给张三"
+
+# 先预览内容
+python excel_task.py --file 工作簿 2.xlsx --preview
 ```
 
-**启用详细输出：**
+### 3. 坐标优化（小参数模型）
+
+针对小参数模型（如 Qwen3.5-4B/8B）定位不准的问题：
+
 ```bash
-python3 main.py --verbose "打开微信"
+# 运行测试查看优化效果
+python test_coordinate_optimization.py
 ```
 
-**配置向导：**
-```bash
-python3 main.py --config
-```
+详细文档见：[COORDINATE_OPTIMIZATION.md](COORDINATE_OPTIMIZATION.md)
+
+---
+
+## 🔧 常用命令
+
+| 命令 | 说明 |
+|------|------|
+| `python main.py` | 交互模式 |
+| `python main.py "任务描述"` | 直接执行任务 |
+| `python main.py --config` | 配置向导 |
+| `python main.py --list-devices` | 查看设备 |
+| `python main.py --list-apps` | 查看支持的应用 |
+| `python main.py --batch 文件.xlsx` | 批量执行任务 |
+| `python excel_task.py --file 文件.xlsx --task "任务"` | Excel 任务执行 |
+| `python test_coordinate_optimization.py` | 测试坐标优化 |
+
+---
+
+## 📖 文档
+
+| 文档 | 说明 |
+|------|------|
+| [BATCH_USAGE.md](BATCH_USAGE.md) | 批量任务使用指南 |
+| [COORDINATE_OPTIMIZATION.md](COORDINATE_OPTIMIZATION.md) | 坐标优化说明 |
 
 ---
 
@@ -300,6 +369,16 @@ adb devices
 - 确保使用 Ollama 本地模型而非远程 API
 - 检查 `agent.verbose` 是否为 `true`
 
+**Q6: 小参数模型点击位置不准？**
+- 开启坐标优化：`coordinate_optimization.enabled = true`
+- 增大偏移量：`click_offset_x = 10`, `click_offset_y = 10`
+- 启用区域点击：`use_region_click = true`
+
+**Q7: 批量任务报错 "pandas not installed"？**
+```bash
+pip install pandas openpyxl
+```
+
 ---
 
 ## 📚 技术架构（可选阅读）
@@ -311,6 +390,8 @@ adb devices
 **核心模块：**
 - `main.py` - 命令行入口
 - `server.py` - Web 服务器
+- `excel_task.py` - Excel 任务执行器
+- `phone_agent/batch_runner.py` - 批量任务执行器
 - `phone_agent/` - 核心逻辑包
 
 ---
