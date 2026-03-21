@@ -204,7 +204,6 @@ async function previewExcel() {
 // 执行 Excel 批量任务
 async function executeExcelBatch() {
     const taskInput = document.getElementById('excelTaskInput');
-    const saveScreenshotsInput = document.getElementById('saveScreenshotsInput');
     const embedScreenshotsInput = document.getElementById('embedScreenshotsInput');
 
     const task = taskInput.value.trim();
@@ -242,7 +241,6 @@ async function executeExcelBatch() {
             body: JSON.stringify({
                 file: filePath,
                 task,
-                save_screenshots: saveScreenshotsInput.checked,
                 embed_screenshot: embedScreenshotsInput.checked
             })
         });

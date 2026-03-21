@@ -32,7 +32,12 @@
       "Bash(python -c \"import pandas as pd; df = pd.DataFrame\\({''问题'': [''测试问题 1'', ''测试问题 2'']}\\); df.to_excel\\(''test_input.xlsx'', index=False\\); print\\(''Test Excel file created''\\)\")",
       "Bash(python excel_task.py --file test_input.xlsx --task \"测试任务\" --preview)",
       "Bash(python excel_task.py --file test_input.xlsx --task \"test\" --preview)",
-      "Bash(python -c \"from flask import Flask; app = Flask\\(__name__, static_folder=''templates'', static_url_path=''''\\); print\\(''Flask configured correctly''\\)\")"
+      "Bash(python -c \"from flask import Flask; app = Flask\\(__name__, static_folder=''templates'', static_url_path=''''\\); print\\(''Flask configured correctly''\\)\")",
+      "Bash(python -c \"from excel_task import save_results_to_excel; import inspect; print\\(inspect.signature\\(save_results_to_excel\\)\\)\")",
+      "Bash(findstr python.exe)",
+      "Bash(python server.py)",
+      "Bash(python -c \"from excel_task import process_excel_questions, save_results_to_excel; print\\(''Import successful''\\)\")",
+      "Bash(python -c \"import pandas as pd; df = pd.read_excel\\(''uploads/da064385e656422bab780a29564daf96_a.xlsx''\\); print\\(df.columns.tolist\\(\\)\\); print\\(df\\)\")"
     ]
   }
 }
