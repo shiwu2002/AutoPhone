@@ -620,12 +620,12 @@ def excel_batch_task():
             lang=agent_config_data.get('lang', 'cn')
         )
 
-        # 确定输出文件
+        # 确定输出文件（默认覆盖原文件）
         from pathlib import Path
         output_file = data.get('output')
         if not output_file:
-            input_path = Path(data['file'])
-            output_file = str(input_path.parent / f"{input_path.stem}_results{input_path.suffix}")
+            # 默认直接覆盖原文件
+            output_file = data['file']
 
         # 执行批量任务
         results = process_excel_questions(
@@ -634,8 +634,6 @@ def excel_batch_task():
             output_path=output_file,
             model_cfg=model_cfg,
             agent_cfg=agent_cfg,
-            save_screenshots=data.get('save_screenshots', False),
-            screenshot_dir=data.get('screenshot_dir', './excel_screenshots'),
             embed_screenshot=data.get('embed_screenshot', False),
             column=data.get('column')
         )
