@@ -37,7 +37,30 @@
       "Bash(findstr python.exe)",
       "Bash(python server.py)",
       "Bash(python -c \"from excel_task import process_excel_questions, save_results_to_excel; print\\(''Import successful''\\)\")",
-      "Bash(python -c \"import pandas as pd; df = pd.read_excel\\(''uploads/da064385e656422bab780a29564daf96_a.xlsx''\\); print\\(df.columns.tolist\\(\\)\\); print\\(df\\)\")"
+      "Bash(python -c \"import pandas as pd; df = pd.read_excel\\(''uploads/da064385e656422bab780a29564daf96_a.xlsx''\\); print\\(df.columns.tolist\\(\\)\\); print\\(df\\)\")",
+      "Bash(python -m py_compile cli.py)",
+      "Bash(python -m py_compile main.py)",
+      "Bash(python -m py_compile install_keyboard.py)",
+      "Bash(dir /b e:PythonAutoPhone)",
+      "Bash(copy \"e:\\\\Python\\\\AutoPhone\\\\install_keyboard.py\" \"e:\\\\Python\\\\AutoPhone\\\\bin\\\\install_keyboard.py\")",
+      "Bash(copy \"e:\\\\Python\\\\AutoPhone\\\\excel_task.py\" \"e:\\\\Python\\\\AutoPhone\\\\bin\\\\excel_task.py\")",
+      "Bash(del \"e:\\\\Python\\\\AutoPhone\\\\install_keyboard.py\" \"e:\\\\Python\\\\AutoPhone\\\\excel_task.py\")",
+      "Bash(python -c \"import shutil; shutil.move\\(''e:\\\\Python\\\\AutoPhone\\\\install_keyboard.py'', ''e:\\\\Python\\\\AutoPhone\\\\bin\\\\install_keyboard.py''\\); shutil.move\\(''e:\\\\Python\\\\AutoPhone\\\\excel_task.py'', ''e:\\\\Python\\\\AutoPhone\\\\bin\\\\excel_task.py''\\)\")",
+      "Bash(python /dev/stdin:*)",
+      "Bash(python -c \"import shutil; from pathlib import Path; shutil.copy2\\(''e:/Python/AutoPhone/excel_task.py'', ''e:/Python/AutoPhone/bin/excel_task.py''\\); Path\\(''e:/Python/AutoPhone/excel_task.py''\\).unlink\\(\\); print\\(''Done''\\)\")",
+      "Bash(python -c \"from pathlib import Path; Path\\(''e:/Python/AutoPhone/install_keyboard.py''\\).unlink\\(\\); print\\(''Removed duplicate''\\)\")",
+      "Bash(python -c \"from pathlib import Path; import os; [print\\(os.path.relpath\\(p, ''e:/Python/AutoPhone''\\)\\) for p in Path\\(''e:/Python/AutoPhone''\\).rglob\\(''*.py''\\)]\")",
+      "Bash(python -m py_compile cli/__init__.py)",
+      "Bash(python -m py_compile cli/parser.py)",
+      "Bash(python -m py_compile cli/checks.py)",
+      "Bash(python -m py_compile cli/commands.py)",
+      "Bash(python -m py_compile cli/wizard.py)",
+      "Bash(python bin/install_keyboard.py --help)",
+      "Bash(python bin/install_keyboard.py)",
+      "Bash(python server.py --help)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\84857\\.claude\\plans"
     ]
   }
 }

@@ -4,10 +4,10 @@ Excel 任务执行器 - 读取 Excel 文件内容，让智能体在手机上执�
 
 使用示例：
     # 批量执行并嵌入截图
-    python excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch --embed-screenshot
+    python bin/excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch --embed-screenshot
 
     # 只保存答案文本（默认）
-    python excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch
+    python bin/excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch
 """
 
 import argparse
@@ -16,6 +16,9 @@ import json
 import os
 import sys
 from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Fix Windows console encoding
 if sys.platform == 'win32':

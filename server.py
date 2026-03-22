@@ -492,7 +492,7 @@ def search_history():
 
 
 # 导入 excel_task 模块中的函数
-from excel_task import process_excel_questions
+from bin.excel_task import process_excel_questions
 
 
 @app.route('/upload', methods=['POST'])
