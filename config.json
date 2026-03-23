@@ -13,7 +13,7 @@
     },
     "local": {
       "base_url": "http://localhost:11434/v1",
-      "model": "qwen3.5:4b",
+      "model": "qwen3.5:9b",
       "max_tokens": 696325
     },
     "use_thinking": false

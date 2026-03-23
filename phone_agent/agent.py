@@ -86,6 +86,8 @@ class PhoneAgent:
             device_id=self.agent_config.device_id,
             confirmation_callback=confirmation_callback,
             takeover_callback=takeover_callback,
+            model_config=self.model_config,
+            agent_config=self.agent_config,
         )
 
         self._context: list[dict[str, Any]] = []

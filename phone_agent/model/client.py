@@ -1,6 +1,7 @@
 """用于 OpenAI 兼容 API 的 AI 推理模型客户端。"""
 
 import json
+import logging
 import time
 import httpx
 from dataclasses import dataclass, field
@@ -10,6 +11,8 @@ from openai import OpenAI, Stream
 from openai.types.chat import ChatCompletionChunk
 
 from phone_agent.config.i18n import get_message
+
+logger = logging.getLogger(__name__)
 
 # Try to import ollama SDK (optional, for enhanced thinking support)
 try:
@@ -70,7 +73,7 @@ class ModelClient:
         )
 
         # Create HTTP client with SSL verification disabled for local development
-        http_client = httpx.Client(verify=False)
+        self.http_client = httpx.Client(verify=False)
 
         # Initialize client based on provider
         if self.config.provider == "anthropic":
@@ -79,7 +82,7 @@ class ModelClient:
                 self.client = Anthropic(
                     api_key=self.config.api_key,
                     base_url=self.config.base_url,
-                    http_client=http_client
+                    http_client=self.http_client
                 )
             except ImportError:
                 print("⚠️  anthropic SDK not installed, falling back to OpenAI-compatible API")
@@ -87,15 +90,19 @@ class ModelClient:
                 self.client = OpenAI(
                     base_url=self.config.base_url,
                     api_key=self.config.api_key,
-                    http_client=http_client
+                    http_client=self.http_client
                 )
         else:
             # OpenAI or local (Ollama uses OpenAI-compatible API)
             self.client = OpenAI(
                 base_url=self.config.base_url,
                 api_key=self.config.api_key,
-                http_client=http_client
+                http_client=self.http_client
             )
+
+        # Health check for local providers
+        if self.config.provider == "local":
+            self._check_local_service()
 
     def request(self, messages: list[dict[str, Any]]) -> ModelResponse:
         """
@@ -530,16 +537,24 @@ class ModelClient:
 
         # Fallback to OpenAI-compatible API (non-streaming)
         try:
-            response = self.client.chat.completions.create(
-                messages=messages,
-                model=self.config.model_name,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-                top_p=self.config.top_p,
-                frequency_penalty=self.config.frequency_penalty,
-                extra_body=self.config.extra_body,
-                stream=False,
-            )
+            # For local/Ollama providers, use minimal parameters to avoid 404 errors
+            if self.config.provider == "local":
+                response = self.client.chat.completions.create(
+                    messages=messages,
+                    model=self.config.model_name,
+                    stream=False,
+                )
+            else:
+                response = self.client.chat.completions.create(
+                    messages=messages,
+                    model=self.config.model_name,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    top_p=self.config.top_p,
+                    frequency_penalty=self.config.frequency_penalty,
+                    extra_body=self.config.extra_body,
+                    stream=False,
+                )
 
             total_time = time.time() - start_time
 
@@ -599,104 +614,188 @@ class ModelClient:
         Returns:
             ModelResponse with thinking and action
         """
-        stream = self.client.chat.completions.create(
-            messages=messages,
-            model=self.config.model_name,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            top_p=self.config.top_p,
-            frequency_penalty=self.config.frequency_penalty,
-            extra_body=self.config.extra_body,
-            stream=True,
-        )
+        try:
+            # For local/Ollama providers, use minimal parameters to avoid 404 errors
+            if self.config.provider == "local":
+                try:
+                    stream = self.client.chat.completions.create(
+                        messages=messages,
+                        model=self.config.model_name,
+                        stream=True,
+                    )
+                except Exception as e:
+                    print(f"Streaming request failed: {e}, retrying without extra parameters...")
+                    stream = self.client.chat.completions.create(
+                        messages=messages,
+                        model=self.config.model_name,
+                        max_tokens=min(self.config.max_tokens, 4096),  # Cap max_tokens for compatibility
+                        stream=True,
+                    )
+            else:
+                stream = self.client.chat.completions.create(
+                    messages=messages,
+                    model=self.config.model_name,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    top_p=self.config.top_p,
+                    frequency_penalty=self.config.frequency_penalty,
+                    extra_body=self.config.extra_body,
+                    stream=True,
+                )
 
-        raw_content = ""
-        buffer = ""
-        action_markers = ["finish(message=", "do(action="]
-        in_action_phase = False
-        first_token_received = False
-        time_to_first_token = None
-        time_to_thinking_end = None
+            raw_content = ""
+            buffer = ""
+            action_markers = ["finish(message=", "do(action="]
+            in_action_phase = False
+            first_token_received = False
+            time_to_first_token = None
+            time_to_thinking_end = None
 
-        for chunk in stream:
-            if len(chunk.choices) == 0:
-                continue
-            if chunk.choices[0].delta.content is not None:
-                content = chunk.choices[0].delta.content
-                raw_content += content
-
-                if not first_token_received:
-                    time_to_first_token = time.time() - start_time
-                    first_token_received = True
-
-                if in_action_phase:
+            for chunk in stream:
+                if len(chunk.choices) == 0:
                     continue
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    raw_content += content
 
-                buffer += content
+                    if not first_token_received:
+                        time_to_first_token = time.time() - start_time
+                        first_token_received = True
 
-                marker_found = False
-                for marker in action_markers:
-                    if marker in buffer:
-                        thinking_part = buffer.split(marker, 1)[0]
-                        thinking_part = self._clean_thinking(thinking_part)
+                    if in_action_phase:
+                        continue
+
+                    buffer += content
+
+                    marker_found = False
+                    for marker in action_markers:
+                        if marker in buffer:
+                            thinking_part = buffer.split(marker, 1)[0]
+                            thinking_part = self._clean_thinking(thinking_part)
+                            if thinking_part:
+                                print(thinking_part, end="", flush=True)
+                                print()
+                            in_action_phase = True
+                            marker_found = True
+                            if time_to_thinking_end is None:
+                                time_to_thinking_end = time.time() - start_time
+                            break
+
+                    if marker_found:
+                        continue
+
+                    if "</think>" in buffer and "<answer>" in buffer:
+                        thinking_end_idx = buffer.find("</think>")
+                        thinking_part = buffer[:thinking_end_idx].replace("<think>", "").strip()
                         if thinking_part:
                             print(thinking_part, end="", flush=True)
                             print()
                         in_action_phase = True
-                        marker_found = True
                         if time_to_thinking_end is None:
                             time_to_thinking_end = time.time() - start_time
-                        break
+                        continue
 
-                if marker_found:
-                    continue
-
-                if "</think>" in buffer and "<answer>" in buffer:
-                    thinking_end_idx = buffer.find("</think>")
-                    thinking_part = buffer[:thinking_end_idx].replace("<think>", "").strip()
-                    if thinking_part:
-                        print(thinking_part, end="", flush=True)
-                        print()
-                    in_action_phase = True
-                    if time_to_thinking_end is None:
-                        time_to_thinking_end = time.time() - start_time
-                    continue
-
-                is_potential_marker = False
-                for marker in action_markers:
-                    for i in range(1, len(marker)):
-                        if buffer.endswith(marker[:i]):
-                            is_potential_marker = True
+                    is_potential_marker = False
+                    for marker in action_markers:
+                        for i in range(1, len(marker)):
+                            if buffer.endswith(marker[:i]):
+                                is_potential_marker = True
+                                break
+                        if is_potential_marker:
                             break
-                    if is_potential_marker:
-                        break
 
-                if not is_potential_marker:
-                    print(buffer, end="", flush=True)
-                    buffer = ""
+                    if not is_potential_marker:
+                        print(buffer, end="", flush=True)
+                        buffer = ""
 
-        total_time = time.time() - start_time
-        thinking, action = self._parse_response(raw_content)
+            total_time = time.time() - start_time
+            thinking, action = self._parse_response(raw_content)
 
-        print()
-        print("=" * 50)
-        print("Performance metrics:")
-        print("-" * 50)
-        if time_to_first_token:
-            print(f"Time to first token: {time_to_first_token:.3f}s")
-        if time_to_thinking_end:
-            print(f"Thinking time: {time_to_thinking_end:.3f}s")
-        print(f"Total inference time: {total_time:.3f}s")
-        print("=" * 50)
+            print()
+            print("=" * 50)
+            print("Performance metrics:")
+            print("-" * 50)
+            if time_to_first_token:
+                print(f"Time to first token: {time_to_first_token:.3f}s")
+            if time_to_thinking_end:
+                print(f"Thinking time: {time_to_thinking_end:.3f}s")
+            print(f"Total inference time: {total_time:.3f}s")
+            print("=" * 50)
 
-        return ModelResponse(
-            thinking=thinking,
-            action=action,
-            raw_content=raw_content,
-            time_to_first_token=time_to_first_token,
-            time_to_thinking_end=time_to_thinking_end,
-            total_time=total_time,
-        )
+            return ModelResponse(
+                thinking=thinking,
+                action=action,
+                raw_content=raw_content,
+                time_to_first_token=time_to_first_token,
+                time_to_thinking_end=time_to_thinking_end,
+                total_time=total_time,
+            )
+        except httpx.HTTPStatusError as e:
+            # Handle HTTP status errors (including 404)
+            self._handle_request_error(e, start_time)
+            raise
+        except Exception as e:
+            # Handle other errors
+            self._handle_request_error(e, start_time)
+            raise
+
+    def _handle_request_error(self, error: Exception, start_time: float) -> None:
+        """
+        Handle and display helpful error messages for API request failures.
+
+        Args:
+            error: The exception that occurred
+            start_time: Request start time for timing info
+        """
+        elapsed = time.time() - start_time
+
+        # Check for 404 errors specifically
+        if hasattr(error, 'status_code') and error.status_code == 404:
+            print()
+            print("=" * 50)
+            print("❌ API Error 404 - Not Found")
+            print("=" * 50)
+            print(f"Base URL: {self.config.base_url}")
+            print(f"Model: {self.config.model_name}")
+            print()
+
+            if self.config.provider == "local":
+                # Extract base URL for Ollama
+                base_url = self.config.base_url
+                if base_url.endswith("/v1"):
+                    base_url = base_url[:-3]
+
+                print("Possible causes:")
+                print("1. Ollama service is not running")
+                print(f"   → Start with: ollama serve")
+                print()
+                print("2. Model is not installed")
+                print(f"   → Install with: ollama pull {self.config.model_name}")
+                print()
+                print("3. Wrong base URL configuration")
+                print(f"   → Default Ollama URL: http://localhost:11434/v1")
+                print()
+
+                # Quick diagnostic
+                print("Running diagnostic...")
+                try:
+                    response = self.http_client.get(f"{base_url}/api/tags", timeout=3.0)
+                    if response.status_code == 200:
+                        models = response.json().get("models", [])
+                        model_names = [m.get("name", "") for m in models]
+                        print(f"✓ Ollama service is running")
+                        print(f"✓ Available models: {', '.join(model_names)}")
+                        if self.config.model_name not in model_names:
+                            print(f"✗ Model '{self.config.model_name}' NOT FOUND")
+                    else:
+                        print(f"✗ Ollama returned status: {response.status_code}")
+                except Exception as e:
+                    print(f"✗ Cannot connect to Ollama: {e}")
+            else:
+                print("Check your API key and base URL configuration.")
+
+            print("=" * 50)
+            print()
 
     def _parse_response(self, content: str) -> tuple[str, str]:
         """
@@ -766,19 +865,19 @@ class ModelClient:
     def _clean_action(self, action: str) -> str:
         """
         通过移除 XML 标签和其他伪影来清理动作字符串。
-        
+
         Args:
             action: 原始动作字符串。
-            
+
         Returns:
             清理后的动作字符串。
         """
         # Remove </answer> tag if present
         action = action.replace("</answer>", "")
-        
+
         # Remove any trailing whitespace
         action = action.strip()
-        
+
         # If action ends with ) and has proper structure, keep it
         # But remove any content after the closing parenthesis
         if action.startswith("do("):
@@ -791,8 +890,62 @@ class ModelClient:
             last_paren = action.rfind(")")
             if last_paren != -1:
                 action = action[:last_paren + 1]
-        
+
         return action
+
+    def _check_local_service(self) -> bool:
+        """
+        Check if local Ollama service is running and accessible.
+
+        Returns:
+            True if service is healthy, False otherwise.
+        """
+        try:
+            # Extract base URL without /v1 suffix
+            base_url = self.config.base_url
+            if base_url.endswith("/v1"):
+                base_url = base_url[:-3]
+
+            # Try to connect to Ollama API
+            response = self.http_client.get(f"{base_url}/api/tags", timeout=5.0)
+
+            if response.status_code == 200:
+                # Service is running, check if model exists
+                try:
+                    data = response.json()
+                    models = data.get("models", [])
+                    model_names = [m.get("name", "") for m in models]
+
+                    # Check if configured model is available
+                    if self.config.model_name not in model_names:
+                        print(f"⚠️  Warning: Model '{self.config.model_name}' not found in Ollama")
+                        print(f"   Available models: {', '.join(model_names) if model_names else 'None'}")
+                        print(f"   Install with: ollama pull {self.config.model_name}")
+                except Exception as e:
+                    logger.debug(f"Could not parse model list: {e}")
+                return True
+            elif response.status_code == 404:
+                print(f"❌ Ollama service returned 404 - endpoint not found")
+                print(f"   Base URL: {base_url}")
+                print(f"   Make sure Ollama is running: ollama serve")
+                return False
+            else:
+                print(f"⚠️  Ollama service returned unexpected status: {response.status_code}")
+                return False
+
+        except httpx.ConnectError:
+            print(f"❌ Cannot connect to Ollama service at {base_url}")
+            print(f"   Make sure Ollama is running: ollama serve")
+            print(f"   Default port: 11434")
+            return False
+        except httpx.ReadTimeout:
+            print(f"❌ Connection to Ollama service timed out")
+            print(f"   Base URL: {base_url}")
+            print(f"   Make sure Ollama is running and responsive")
+            return False
+        except Exception as e:
+            print(f"⚠️  Error checking Ollama service: {e}")
+            return False
 
 
 class MessageBuilder:

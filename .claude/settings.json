@@ -66,10 +66,27 @@
       "Bash(venv/bin/python3 -c \":*)",
       "Bash(venv/bin/python3 -m py_compile bin/excel_task.py)",
       "Bash(python test_coordinate.py)",
-      "Bash(python test_coordinate_precise.py)"
+      "Bash(python test_coordinate_precise.py)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(python -c \"from phone_agent.tools.excel_tool import ExcelTool; print\\(''ExcelTool import OK''\\)\")",
+      "Bash(python -c \"from phone_agent.actions.handler import ActionHandler; print\\(''ActionHandler import OK''\\)\")",
+      "Bash(python -c \"from phone_agent import PhoneAgent; print\\(''PhoneAgent import OK''\\)\")",
+      "Bash(python -c \"from phone_agent.config.prompts import SYSTEM_PROMPT; print\\(''角色定义:'' if ''高级自动化测试人员'' in SYSTEM_PROMPT else ''角色定义未更新''\\); print\\(''Excel 工具:'' if ''Execute_Excel_Batch'' in SYSTEM_PROMPT else ''Excel 工具未添加''\\)\")",
+      "Bash(python -c \"from phone_agent.config.prompts import SYSTEM_PROMPT; print\\(''高级自动化测试人员'' in SYSTEM_PROMPT\\); print\\(''Execute_Excel_Batch'' in SYSTEM_PROMPT\\)\")",
+      "Bash(python -m py_compile phone_agent/tools/excel_tool.py)",
+      "Bash(python -m py_compile phone_agent/actions/handler.py)",
+      "Bash(python -m py_compile phone_agent/agent.py)",
+      "Bash(python -m py_compile phone_agent/tools/registry.py)",
+      "Bash(python -m py_compile phone_agent/actions/sets/adb_ui.py)",
+      "Bash(python -m py_compile phone_agent/actions/sets/adb_navigation.py)",
+      "Bash(python -m py_compile phone_agent/actions/sets/app_management.py)",
+      "Bash(python -m py_compile phone_agent/actions/sets/input_tools.py)",
+      "Bash(python -c \"from phone_agent.tools.registry import list_tool_sets; ts = list_tool_sets\\(\\); print\\(''\\\\n''.join\\([f\"\"{t[''id'']}: {t[''name'']}\"\" for t in ts]\\)\\)\")",
+      "Bash(python -c \"from phone_agent import PhoneAgent; print\\(''PhoneAgent 导入成功''\\)\")"
     ],
     "additionalDirectories": [
-      "C:\\Users\\84857\\.claude\\plans"
+      "C:\\Users\\84857\\.claude\\plans",
+      "e:\\Python\\AutoPhone\\phone_agent"
     ]
   }
 }

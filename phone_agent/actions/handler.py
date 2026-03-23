@@ -2,26 +2,17 @@
 
 import ast
 import time
-from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from phone_agent.adb.screenshot import Screenshot
 from phone_agent.config.timing import TIMING_CONFIG
 from phone_agent.device_factory import get_device_factory
+from phone_agent.tools.registry import get_registry, list_tool_sets, get_tool_set_info, get_tool_details
+from phone_agent.actions.result import ActionResult
+from phone_agent.actions.sets import TOOL_HANDLERS
+from phone_agent.utils.logger import setup_logger
 
-
-@dataclass
-class ActionResult:
-    """动作执行的结果。"""
-
-    success: bool
-    should_finish: bool
-    message: str | None = None
-    requires_confirmation: bool = False
-
-
-ActionHandlerFunc = Callable[[dict[str, Any], Screenshot], ActionResult]
-# 用于处理动作的可调用对象类型
+logger = setup_logger(__name__)
 
 
 class ActionHandler:
@@ -33,6 +24,8 @@ class ActionHandler:
         confirmation_callback: 用于敏感操作确认的可选回调。
             应返回 True 以继续，False 以取消。
         takeover_callback: 用于接管请求的可选回调（登录、验证码等）。
+        model_config: 模型配置（用于 Excel 批量处理工具）。
+        agent_config: Agent 配置（用于 Excel 批量处理工具）。
     """
 
     def __init__(
@@ -40,10 +33,15 @@ class ActionHandler:
         device_id: Optional[str] = None,
         confirmation_callback: Optional[Callable[[str], bool]] = None,
         takeover_callback: Optional[Callable[[str], None]] = None,
+        model_config: Optional[Any] = None,
+        agent_config: Optional[Any] = None,
     ):
         self.device_id = device_id
         self.confirmation_callback = confirmation_callback or self._default_confirmation
         self.takeover_callback = takeover_callback or self._default_takeover
+        self.model_config = model_config
+        self.agent_config = agent_config
+        self.registry = get_registry()
 
     def execute(
         self, action: dict[str, Any], screenshot: Screenshot
@@ -64,6 +62,10 @@ class ActionHandler:
                 success=True, should_finish=True, message=action.get("message")
             )
 
+        # 处理工具查询动作
+        if action_type == "query":
+            return self._handle_query_action(action, screenshot)
+
         if action_type != "do":
             return ActionResult(
                 success=False,
@@ -79,7 +81,8 @@ class ActionHandler:
                 message="No action specified in the command",
             )
 
-        handler_method = self._get_handler(action_name)
+        # 先尝试从工具集处理器中查找
+        handler_method = TOOL_HANDLERS.get(action_name)
 
         if handler_method is None:
             return ActionResult(
@@ -89,207 +92,88 @@ class ActionHandler:
             )
 
         try:
+            # 调用处理函数，传入必要的上下文
+            return handler_method(
+                action,
+                screenshot,
+                device_id=self.device_id,
+                model_config=self.model_config,
+                agent_config=self.agent_config,
+                takeover_callback=self.takeover_callback,
+            )
+        except TypeError:
+            # 向后兼容：如果处理函数不需要额外参数
             return handler_method(action, screenshot)
         except Exception as e:
+            logger.error(f"Action failed: {e}", exc_info=True)
             return ActionResult(
                 success=False, should_finish=False, message=f"Action failed: {e}"
             )
 
-    def _get_handler(self, action_name: str) -> ActionHandlerFunc | None:
-        """获取动作的处理方法。"""
-        handlers: dict[str, ActionHandlerFunc] = {
-            "Launch": self._handle_launch,
-            "Tap": self._handle_tap,
-            "Type": self._handle_type,
-            "Type_Name": self._handle_type,
-            "Swipe": self._handle_swipe,
-            "Back": self._handle_back,
-            "Home": self._handle_home,
-            "Double Tap": self._handle_double_tap,
-            "Long Press": self._handle_long_press,
-            "Wait": self._handle_wait,
-            "Take_over": self._handle_takeover,
-            "Note": self._handle_note,
-            "Call_API": self._handle_call_api,
-            "Interact": self._handle_interact,
-        }
-        return handlers.get(action_name)
-
-    def _convert_relative_to_absolute(
-        self, element: list[int], screenshot: Screenshot,
-        use_region: bool = False,
-    ) -> tuple[int, int] | tuple[tuple[int, int], tuple[int, int]]:
+    def _handle_query_action(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
         """
-        将相对坐标 (0-1000) 转换为绝对像素。
+        处理工具查询动作。
 
         Args:
-            element: [x, y] 相对坐标
+            action: 查询动作字典
             screenshot: Screenshot 对象
-            use_region: 是否返回区域而非单点（针对小参数模型）
 
         Returns:
-            如果是单点：(x, y)
-            如果是区域：((x1, y1), (x2, y2)) 区域对角点
+            ActionResult: 查询结果
         """
-        if screenshot.mapper is None:
-            # 没有压缩，直接转换
-            x = int(element[0] / 1000 * screenshot.width)
-            y = int(element[1] / 1000 * screenshot.height)
-            return (x, y) if not use_region else ((x, y), (x, y))
+        query_type = action.get("query_type")
 
-        # 将相对坐标 (0-1000) 转换为 1K 压缩图的绝对坐标
-        # AI 模型看到的是压缩后的图片，返回的坐标是相对于压缩图尺寸的比例值
-        x_1k = element[0] / 1000 * screenshot.width
-        y_1k = element[1] / 1000 * screenshot.height
+        if query_type == "GetToolIndex":
+            # 获取所有工具集索引
+            tool_sets = list_tool_sets()
+            message = "可用工具集索引：\n\n"
+            for ts in tool_sets:
+                message += f"- {ts['id']}: {ts['name']} ({ts['description']})\n"
+            message += "\n查看工具集详情：do(action=\"GetToolSet\", set_name=\"adb_ui\")"
+            return ActionResult(True, False, message=message)
 
-        if use_region:
-            # 返回一个区域，提高容错率
-            return screenshot.mapper.to_original_region(x_1k, y_1k)
+        elif query_type == "GetToolSet":
+            # 获取指定工具集的详细信息
+            set_name = action.get("set_name")
+            if not set_name:
+                return ActionResult(False, False, "GetToolSet 需要 set_name 参数")
+
+            info = get_tool_set_info(set_name)
+            if not info:
+                return ActionResult(False, False, f"工具集不存在：{set_name}")
+
+            message = f"工具集：{info['name']}\n"
+            message += f"描述：{info['description']}\n"
+            message += f"适用场景：{info['index_prompt']}\n\n"
+            message += "包含工具：\n"
+            for tool in info['tools']:
+                message += f"  - {tool['name']}: {tool['description']}\n"
+            message += f"\n查看工具详情：do(action=\"GetTool\", set_name=\"{set_name}\", tool_name=\"Tap\")"
+            return ActionResult(True, False, message=message)
+
+        elif query_type == "GetTool":
+            # 获取具体工具的详细使用说明
+            set_name = action.get("set_name")
+            tool_name = action.get("tool_name")
+
+            if not set_name or not tool_name:
+                return ActionResult(False, False, "GetTool 需要 set_name 和 tool_name 参数")
+
+            details = get_tool_details(set_name, tool_name)
+            if not details:
+                return ActionResult(False, False, f"工具不存在：{set_name}.{tool_name}")
+
+            message = f"工具：{details['name']}\n"
+            message += f"所属工具集：{details['set_name']}\n"
+            message += f"描述：{details['description']}\n\n"
+            message += "参数：\n"
+            for param, desc in details['parameters'].items():
+                message += f"  - {param}: {desc}\n"
+            message += f"\n示例：{details['example']}"
+            return ActionResult(True, False, message=message)
+
         else:
-            # 返回单点（精确反推，不添加偏移）
-            return screenshot.mapper.to_original_coordinate(x_1k, y_1k, add_click_offset=False)
-
-    def _handle_launch(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理启动应用动作。"""
-        app_name = action.get("app")
-        if not app_name:
-            return ActionResult(False, False, "No app name specified")
-
-        device_factory = get_device_factory()
-        success = device_factory.launch_app(app_name, self.device_id)
-        if success:
-            return ActionResult(True, False)
-        return ActionResult(False, False, f"App not found: {app_name}")
-
-    def _handle_tap(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理点击动作。"""
-        element = action.get("element")
-        if not element:
-            return ActionResult(False, False, "No element coordinates")
-
-        x, y = self._convert_relative_to_absolute(element, screenshot)
-
-        device_factory = get_device_factory()
-        device_factory.tap(x, y, self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_type(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理文本输入动作。"""
-        text = action.get("text", "")
-
-        device_factory = get_device_factory()
-
-        # Switch to ADB keyboard
-        original_ime = device_factory.detect_and_set_adb_keyboard(self.device_id)
-        time.sleep(TIMING_CONFIG.action.keyboard_switch_delay)
-
-        # Clear existing text and type new text
-        device_factory.clear_text(self.device_id)
-        time.sleep(TIMING_CONFIG.action.text_clear_delay)
-
-        # Handle multiline text by splitting on newlines
-        device_factory.type_text(text, self.device_id)
-        time.sleep(TIMING_CONFIG.action.text_input_delay)
-
-        # Restore original keyboard
-        device_factory.restore_keyboard(original_ime, self.device_id)
-        time.sleep(TIMING_CONFIG.action.keyboard_restore_delay)
-
-        return ActionResult(True, False)
-
-    def _handle_swipe(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理滑动动作。"""
-        start = action.get("start")
-        end = action.get("end")
-
-        if not start or not end:
-            return ActionResult(False, False, "Missing swipe coordinates")
-
-        start_x, start_y = self._convert_relative_to_absolute(start, screenshot)
-        end_x, end_y = self._convert_relative_to_absolute(end, screenshot)
-
-        device_factory = get_device_factory()
-        device_factory.swipe(start_x, start_y, end_x, end_y, device_id=self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_back(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理返回按钮动作。"""
-        device_factory = get_device_factory()
-        device_factory.back(self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_home(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理主页按钮动作。"""
-        device_factory = get_device_factory()
-        device_factory.home(self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_double_tap(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理双击动作。"""
-        element = action.get("element")
-        if not element:
-            return ActionResult(False, False, "No element coordinates")
-
-        x, y = self._convert_relative_to_absolute(element, screenshot)
-        device_factory = get_device_factory()
-        device_factory.double_tap(x, y, self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_long_press(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理长按动作。"""
-        element = action.get("element")
-        if not element:
-            return ActionResult(False, False, "No element coordinates")
-
-        x, y = self._convert_relative_to_absolute(element, screenshot)
-        device_factory = get_device_factory()
-        device_factory.long_press(x, y, device_id=self.device_id)
-        return ActionResult(True, False)
-
-    def _handle_wait(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理等待动作。"""
-        duration_str = action.get("duration", "1 seconds")
-        try:
-            duration = float(duration_str.replace("seconds", "").strip())
-        except ValueError:
-            duration = 1.0
-
-        time.sleep(duration)
-        return ActionResult(True, False)
-
-    def _handle_takeover(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理接管请求（登录、验证码等）。"""
-        message = action.get("message", "User intervention required")
-        self.takeover_callback(message)
-        return ActionResult(True, False)
-
-    def _handle_note(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理笔记动作（用于内容记录的占位符）。"""
-        # This action is typically used for recording page content
-        # Implementation depends on specific requirements
-        return ActionResult(True, False)
-
-    def _handle_call_api(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理 API 调用动作（用于总结的占位符）。"""
-        # This action is typically used for content summarization
-        # Implementation depends on specific requirements
-        return ActionResult(True, False)
-
-    def _handle_interact(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """处理交互请求（需要用户选择）。"""
-        # This action signals that user input is needed
-        return ActionResult(True, False, message="User interaction required")
-
-    def _send_keyevent(self, keycode: str) -> None:
-        """向设备发送键值事件。"""
-        from phone_agent.adb.cmd_executor import CommandExecutor
-
-        # ADB devices use standard input keyevent command
-        cmd_prefix = ["adb", "-s", self.device_id] if self.device_id else ["adb"]
-        # 在命令窗口中执行键值事件
-        CommandExecutor.run_in_console(
-            cmd_prefix + ["shell", "input", "keyevent", keycode]
-        )
+            return ActionResult(False, False, f"Unknown query type: {query_type}")
 
     @staticmethod
     def _default_confirmation(message: str) -> bool:
@@ -319,16 +203,54 @@ def parse_action(response: str) -> dict[str, Any]:
     print(f"Parsing action: {response}")
     try:
         response = response.strip()
+
+        # 处理工具查询动作
+        if response.startswith('do(action="GetToolIndex")'):
+            return {"_metadata": "query", "query_type": "GetToolIndex"}
+        elif response.startswith('do(action="GetToolSet"'):
+            try:
+                response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                tree = ast.parse(response, mode="eval")
+                if isinstance(tree.body, ast.Call):
+                    call = tree.body
+                    action = {"_metadata": "query", "query_type": "GetToolSet"}
+                    for keyword in call.keywords:
+                        key = keyword.arg
+                        if key is None:
+                            raise ValueError("Unnamed keyword argument")
+                        value = ast.literal_eval(keyword.value)
+                        action[key] = value
+                    return action
+            except (SyntaxError, ValueError) as e:
+                raise ValueError(f"Failed to parse GetToolSet: {e}")
+        elif response.startswith('do(action="GetTool"'):
+            try:
+                response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                tree = ast.parse(response, mode="eval")
+                if isinstance(tree.body, ast.Call):
+                    call = tree.body
+                    action = {"_metadata": "query", "query_type": "GetTool"}
+                    for keyword in call.keywords:
+                        key = keyword.arg
+                        if key is None:
+                            raise ValueError("Unnamed keyword argument")
+                        value = ast.literal_eval(keyword.value)
+                        action[key] = value
+                    return action
+            except (SyntaxError, ValueError) as e:
+                raise ValueError(f"Failed to parse GetTool: {e}")
+
+        # 处理 Type/Type_Name 特殊情况
         if response.startswith('do(action="Type"') or response.startswith(
             'do(action="Type_Name"'
         ):
             text = response.split("text=", 1)[1][1:-2]
             action = {"_metadata": "do", "action": "Type", "text": text}
             return action
+
+        # 处理标准 do 动作
         elif response.startswith("do"):
-            # Use AST parsing instead of eval for safety
             try:
-                # Escape special characters (newlines, tabs, etc.) for valid Python syntax
                 response = response.replace('\n', '\\n')
                 response = response.replace('\r', '\\r')
                 response = response.replace('\t', '\\t')
@@ -338,7 +260,6 @@ def parse_action(response: str) -> dict[str, Any]:
                     raise ValueError("Expected a function call")
 
                 call = tree.body
-                # Extract keyword arguments safely
                 action = {"_metadata": "do"}
                 for keyword in call.keywords:
                     key = keyword.arg
@@ -351,14 +272,15 @@ def parse_action(response: str) -> dict[str, Any]:
             except (SyntaxError, ValueError) as e:
                 raise ValueError(f"Failed to parse do() action: {e}")
 
+        # 处理 finish 动作
         elif response.startswith("finish"):
             action = {
                 "_metadata": "finish",
                 "message": response.replace("finish(message=", "")[1:-2],
             }
+            return action
         else:
             raise ValueError(f"Failed to parse action: {response}")
-        return action
     except Exception as e:
         raise ValueError(f"Failed to parse action: {e}")
 
