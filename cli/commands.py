@@ -99,12 +99,17 @@ def run_batch_mode(args) -> None:
     model_config_dict = config.get('model', {})
     agent_config_dict = config.get('agent', {})
 
+    # Get provider-specific config
+    provider = model_config_dict.get('provider', 'local')
+    provider_config = model_config_dict.get(provider, {})
+
     model_cfg = ModelConfig(
-        base_url=args.base_url or model_config_dict.get('base_url', 'http://localhost:11434/v1'),
-        model_name=args.model or model_config_dict.get('model_name', 'qwen3.5:4b'),
-        api_key=args.apikey or model_config_dict.get('api_key', 'ollama'),
+        base_url=args.base_url or provider_config.get('base_url', 'http://localhost:11434/v1'),
+        model_name=args.model or provider_config.get('model', 'qwen3.5:4b'),
+        api_key=args.apikey or provider_config.get('api_key', 'ollama'),
         use_thinking=model_config_dict.get('use_thinking', False),
         lang=args.lang,
+        provider=provider,
     )
 
     batch_cfg = BatchConfig(

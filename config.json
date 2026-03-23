@@ -1,9 +1,21 @@
 {
   "model": {
-    "type": "remote",
-    "base_url": "https://api-inference.modelscope.cn/v1",
-    "model_name": "ZhipuAI/AutoGLM-Phone-9B",
-    "api_key": "ms-fd50204a-9b29-40e0-a29a-1af24569e10f",
+    "provider": "openai",
+    "anthropic": {
+      "api_key": "",
+      "base_url": "https://api.anthropic.com",
+      "model": "claude-opus-4-6-20251101"
+    },
+    "openai": {
+      "api_key": "ms-fd50204a-9b29-40e0-a29a-1af24569e10f",
+      "base_url": "https://api-inference.modelscope.cn/v1",
+      "model": "ZhipuAI/AutoGLM-Phone-9B"
+    },
+    "local": {
+      "base_url": "http://localhost:11434/v1",
+      "model": "qwen3.5:4b",
+      "max_tokens": 69632
+    },
     "use_thinking": false
   },
   "agent": {
@@ -49,5 +61,6 @@
       "adb_restart_delay": 2.0,
       "server_restart_delay": 1.0
     }
-  }
+  },
+  "use_thinking": true
 }

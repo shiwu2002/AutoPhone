@@ -30,6 +30,8 @@ class AgentConfig:
     lang: str = "cn"
     system_prompt: str | None = None
     verbose: bool = True
+    max_context_rounds: int = 5  # 保留最近 N 轮对话
+    remember_app_info: bool = True  # 是否在跨步骤中记住应用信息
 
     def __post_init__(self):
         if self.system_prompt is None:
@@ -88,7 +90,8 @@ class PhoneAgent:
 
         self._context: list[dict[str, Any]] = []
         self._step_count = 0
-        self._max_context_rounds = 5  # 只保留最近 5 轮对话
+        self._app_history: list[str] = []  # 记录应用切换历史
+        self._last_screen_info: str | None = None  # 缓存上一步的屏幕信息
 
     def run(self, task: str) -> str:
         """
@@ -158,20 +161,90 @@ class PhoneAgent:
         """重置代理状态以开始新任务。"""
         self._context = []
         self._step_count = 0
+        self._app_history = []
+        self._last_screen_info = None
 
-    def _trim_context(self) -> None:
-        """修剪上下文，只保留 system prompt 和最近 N 轮对话。"""
+    def _manage_context(self) -> None:
+        """
+        智能管理上下文，平衡记忆力和 token 使用。
+
+        策略：
+        1. 保留 system prompt
+        2. 保留最近 N 轮完整对话（user + assistant）
+        3. 压缩旧消息中的图片以节省空间
+        4. 保留关键的应用切换历史
+        """
         if len(self._context) <= 1:
-            return  # 只有 system prompt 或更少，不需要修剪
+            return
 
-        # 保留 system prompt（第一个）和最近 N 轮对话（每轮包含 user + assistant 两条消息）
-        # 上下文结构：[system, user1, assistant1, user2, assistant2, ...]
-        max_messages = 1 + (self._max_context_rounds * 2)  # 1 system + 5*2 = 11
+        max_rounds = self.agent_config.max_context_rounds
+        max_messages = 1 + (max_rounds * 2)  # 1 system + N*2
 
         if len(self._context) > max_messages:
-            # 保留 system prompt 和最近的消息
+            # 保留 system prompt 和最近 N 轮对话
             self._context = [self._context[0]] + self._context[-(max_messages - 1):]
-            logger.info(f"Context trimmed to {len(self._context)} messages (keeping last {self._max_context_rounds} rounds)")
+
+            # 压缩旧消息中的图片
+            for i, msg in enumerate(self._context[1:], 1):
+                if msg.get('role') == 'user':
+                    content = msg.get('content', [])
+                    if isinstance(content, list):
+                        has_image = any(item.get('type') == 'image_url' for item in content)
+                        if has_image:
+                            # 移除图片，只保留文本
+                            msg['content'] = [
+                                item for item in content if item.get('type') == 'text'
+                            ]
+
+            logger.debug(f"Context managed: kept {len(self._context)} messages (last {max_rounds} rounds)")
+
+    def _build_optimized_user_message(
+        self,
+        user_prompt: str | None,
+        screenshot: Any,
+        current_app: str,
+        is_first: bool
+    ) -> dict[str, Any]:
+        """
+        构建优化的用户消息，包含智能上下文增强。
+
+        Args:
+            user_prompt: 用户指令
+            screenshot: 截图对象
+            current_app: 当前应用名称
+            is_first: 是否是第一步
+
+        Returns:
+            优化后的用户消息
+        """
+        # 检测应用切换
+        app_changed = False
+        if self._app_history and current_app != self._app_history[-1]:
+            self._app_history.append(current_app)
+            app_changed = True
+            # 限制应用历史记录数量
+            if len(self._app_history) > 5:
+                self._app_history = self._app_history[-5:]
+
+        # 构建屏幕信息
+        extra_info = {}
+        if self.agent_config.remember_app_info and self._app_history:
+            extra_info['app_history'] = ' -> '.join(self._app_history)
+
+        screen_info = MessageBuilder.build_screen_info(current_app, **extra_info)
+
+        if is_first:
+            text_content = f"{user_prompt}\n\n{screen_info}"
+        else:
+            text_content = f"** Screen Info **\n\n{screen_info}"
+
+        # 缓存屏幕信息用于下一步比较
+        self._last_screen_info = screen_info
+
+        return MessageBuilder.create_user_message(
+            text=text_content,
+            image_base64=screenshot.base64_data
+        )
 
     def _execute_step(
         self, user_prompt: str | None = None, is_first: bool = False
@@ -184,31 +257,24 @@ class PhoneAgent:
         screenshot = device_factory.get_screenshot(self.agent_config.device_id, enable_compression=True)
         current_app = device_factory.get_current_app(self.agent_config.device_id)
 
-        # Build messages
+        # Build messages with optimized context management
         if is_first:
-            # system_prompt 在 __post_init__ 中已确保不为 None
+            # system_prompt 在 __post_init__ 中确保不为 None
             assert self.agent_config.system_prompt is not None
             self._context.append(
                 MessageBuilder.create_system_message(self.agent_config.system_prompt)
             )
+            # Reset app history for new task
+            self._app_history = [current_app]
 
-            screen_info = MessageBuilder.build_screen_info(current_app)  # type: ignore[misc]
-            text_content = f"{user_prompt}\n\n{screen_info}"
-
-            self._context.append(
-                MessageBuilder.create_user_message(
-                    text=text_content, image_base64=screenshot.base64_data
-                )
-            )
-        else:
-            screen_info = MessageBuilder.build_screen_info(current_app)  # type: ignore[misc]
-            text_content = f"** Screen Info **\n\n{screen_info}"
-
-            self._context.append(
-                MessageBuilder.create_user_message(
-                    text=text_content, image_base64=screenshot.base64_data
-                )
-            )
+        # Build optimized user message
+        user_message = self._build_optimized_user_message(
+            user_prompt=user_prompt,
+            screenshot=screenshot,
+            current_app=current_app,
+            is_first=is_first
+        )
+        self._context.append(user_message)
 
         # Get model response
         try:
@@ -270,8 +336,8 @@ class PhoneAgent:
             )
         )
 
-        # Trim context to keep only recent rounds
-        self._trim_context()
+        # Manage context to keep only recent rounds
+        self._manage_context()
 
         # Check if finished
         finished = action.get("_metadata") == "finish" or result.should_finish

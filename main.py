@@ -82,13 +82,17 @@ def main():
 
     # Create model and agent configurations
     model_config_dict = config.get('model', {})
+    provider = model_config_dict.get('provider', 'local')
+    provider_config = model_config_dict.get(provider, {})
 
+    # Use provider-specific config, fallback to CLI args
     model_config = ModelConfig(
-        base_url=args.base_url,
-        model_name=args.model,
-        api_key=args.apikey,
+        base_url=args.base_url or provider_config.get('base_url', 'http://localhost:8000/v1'),
+        model_name=args.model or provider_config.get('model', 'claude-opus-4-6-20251101'),
+        api_key=args.apikey or provider_config.get('api_key', ''),
         lang=args.lang,
         use_thinking=model_config_dict.get('use_thinking', False),
+        provider=provider,
     )
 
     # Priority: --verbose > --quiet > config file

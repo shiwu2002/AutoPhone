@@ -23,6 +23,9 @@ Examples:
     # 启动程序
     python main.py
 
+    # 使用交互式配置向导设置模型提供商
+    python main.py --config
+
     # 指定模型端点
     python main.py --base-url http://localhost:8000/v1
 
@@ -55,25 +58,29 @@ Examples:
     env_api_key = os.getenv("PHONE_AGENT_API_KEY")
 
     is_local = model_config.get('type', 'remote') == 'local'
+    provider = model_config.get('provider', 'anthropic')
+
+    # Get provider-specific config
+    provider_config = model_config.get(provider, {})
 
     parser.add_argument(
         "--base-url",
         type=str,
-        default=model_config.get('base_url', "http://localhost:8000/v1") if is_local or not env_base_url else env_base_url,
+        default=model_config.get('base_url', provider_config.get('base_url', "http://localhost:8000/v1")) if is_local or not env_base_url else env_base_url,
         help="Model API base URL",
     )
 
     parser.add_argument(
         "--model",
         type=str,
-        default=model_config.get('model_name', "autoglm-phone-9b") if is_local or not env_model else env_model,
+        default=model_config.get('model_name', provider_config.get('model', "autoglm-phone-9b")) if is_local or not env_model else env_model,
         help="Model name",
     )
 
     parser.add_argument(
         "--apikey",
         type=str,
-        default=model_config.get('api_key', "ollama") if is_local or not env_api_key else env_api_key,
+        default=model_config.get('api_key', provider_config.get('api_key', "ollama")) if is_local or not env_api_key else env_api_key,
         help="API key for model authentication",
     )
 
@@ -158,7 +165,7 @@ Examples:
     )
 
     parser.add_argument(
-        "--config", action="store_true", help="Interactive configuration wizard for local model setup"
+        "--config", action="store_true", help="Interactive configuration wizard for model provider setup"
     )
 
     # Batch mode options

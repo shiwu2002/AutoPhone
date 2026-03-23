@@ -57,7 +57,12 @@
       "Bash(python -m py_compile cli/wizard.py)",
       "Bash(python bin/install_keyboard.py --help)",
       "Bash(python bin/install_keyboard.py)",
-      "Bash(python server.py --help)"
+      "Bash(python server.py --help)",
+      "Bash(python3 -c \"import json; json.load\\(open\\(''config.json''\\)\\)\")",
+      "Bash(python main.py --set-provider local)",
+      "Bash(python main.py --set-provider anthropic)",
+      "Bash(python -c \"import json; c = json.load\\(open\\(''config.json''\\)\\); print\\(''Provider:'', c[''model''].get\\(''provider''\\)\\); print\\(''Anthropic config:'', c[''model''].get\\(''anthropic''\\)\\); print\\(''OpenAI config:'', c[''model''].get\\(''openai''\\)\\); print\\(''Local config:'', c[''model''].get\\(''local''\\)\\)\")",
+      "Bash(source /Volumes/data/python/AutoPhone/venv/bin/activate)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans"

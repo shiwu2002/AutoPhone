@@ -54,12 +54,17 @@ def list_ollama_models(base_url: str) -> list[str]:
         return []
 
 
+def _save_config(config: dict, config_path: Path):
+    """Save configuration to file."""
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
 def _save_config_interactive(config: dict, config_path: Path):
     """Save configuration to file."""
     print()
     print("Saving configuration...")
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+    _save_config(config, config_path)
     print("✅ Configuration saved!")
 
 
@@ -67,7 +72,7 @@ def _configure_agent_interactive(config: dict, agent_config: dict):
     """Configure agent settings interactively."""
     print()
     print("=" * 50)
-    print("2. Agent Configuration")
+    print("Agent Configuration")
     print("=" * 50)
     print()
 
@@ -100,7 +105,7 @@ def _configure_device_interactive(config: dict, device_config: dict):
     """Configure device settings interactively."""
     print()
     print("=" * 50)
-    print("3. Device Configuration")
+    print("Device Configuration")
     print("=" * 50)
     print()
 
@@ -120,7 +125,7 @@ def _configure_timing_interactive(config: dict):
     """Configure timing settings interactively."""
     print()
     print("=" * 50)
-    print("4. Advanced Configuration (Timing)")
+    print("Advanced Configuration (Timing)")
     print("=" * 50)
     print()
 
@@ -232,6 +237,110 @@ def _configure_timing_interactive(config: dict):
     print("✅ Timing configuration saved!")
 
 
+def _configure_provider_interactive(config: dict, provider: str) -> dict:
+    """Configure provider-specific settings interactively."""
+    model_config = config.get('model', {})
+    provider_config = model_config.get(provider, {})
+
+    if provider == 'anthropic':
+        print()
+        print("Configuring Anthropic (Claude)")
+        print("-" * 50)
+
+        default_api_key = provider_config.get('api_key', '')
+        default_model = provider_config.get('model', 'claude-opus-4-6-20251101')
+        default_base_url = provider_config.get('base_url', 'https://api.anthropic.com')
+
+        api_key = input(f"Enter Anthropic API key [{default_api_key or 'required'}]: ").strip() or default_api_key
+        model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+        base_url = input(f"Enter base URL [{default_base_url}]: ").strip() or default_base_url
+
+        return {
+            'api_key': api_key,
+            'base_url': base_url,
+            'model': model,
+            'max_tokens': provider_config.get('max_tokens', 4096)
+        }
+
+    elif provider == 'openai':
+        print()
+        print("Configuring OpenAI")
+        print("-" * 50)
+
+        default_api_key = provider_config.get('api_key', '')
+        default_model = provider_config.get('model', 'gpt-4o')
+        default_base_url = provider_config.get('base_url', 'https://api.openai.com/v1')
+
+        api_key = input(f"Enter OpenAI API key [{default_api_key or 'required'}]: ").strip() or default_api_key
+        model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+        base_url = input(f"Enter base URL [{default_base_url}]: ").strip() or default_base_url
+
+        return {
+            'api_key': api_key,
+            'base_url': base_url,
+            'model': model,
+            'max_tokens': provider_config.get('max_tokens', 4096)
+        }
+
+    elif provider == 'local':
+        print()
+        print("Configuring Local Ollama")
+        print("-" * 50)
+
+        default_base_url = provider_config.get('base_url', 'http://localhost:11434/v1')
+        default_model = provider_config.get('model', 'qwen3.5:7b')
+
+        print()
+        print(f"Checking Ollama service at {default_base_url}...", end=" ")
+        ollama_running = check_ollama_service(default_base_url)
+
+        if ollama_running:
+            print("✅ Running")
+            print()
+            models = list_ollama_models(default_base_url)
+            if models:
+                print("Available models:")
+                for i, model in enumerate(models, 1):
+                    print(f"  {i}. {model}")
+                print()
+
+                model_choice = input(f"Select a model (1-{len(models)}) or enter custom name: ").strip()
+                if model_choice.isdigit() and 1 <= int(model_choice) <= len(models):
+                    selected_model = models[int(model_choice) - 1]
+                elif model_choice:
+                    selected_model = model_choice
+                else:
+                    selected_model = default_model
+            else:
+                print("⚠️  No models found. You may need to pull a model first.")
+                print("   Run: ollama pull qwen3.5:7b")
+                selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+        else:
+            print("❌ Not running")
+            print()
+            print("Please start Ollama service:")
+            print("  1. Install Ollama: https://ollama.com/download")
+            print("  2. Run: ollama serve")
+            print("  3. Pull a model: ollama pull qwen3.5:7b")
+            print()
+
+            base_url = input(f"Enter Ollama base URL [{default_base_url}]: ").strip() or default_base_url
+            selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
+
+        enable_thinking = input("Enable thinking feature for local model? [Y/n]: ").strip().lower()
+        use_thinking = enable_thinking != 'n' and enable_thinking != 'no'
+
+        config['use_thinking'] = use_thinking
+
+        return {
+            'base_url': default_base_url,
+            'model': selected_model,
+            'max_tokens': provider_config.get('max_tokens', 4096)
+        }
+
+    return {}
+
+
 def _print_config_summary(config: dict):
     """Print configuration summary."""
     print()
@@ -243,11 +352,15 @@ def _print_config_summary(config: dict):
     agent = config.get('agent', {})
     device = config.get('device', {})
     timing = config.get('timing', {})
+    provider = model.get('provider', 'anthropic')
+    provider_config = model.get(provider, {})
 
-    print(f"Model Type:      {model.get('type', 'unknown')}")
-    print(f"Model Name:      {model.get('model_name', 'unknown')}")
-    print(f"Base URL:        {model.get('base_url', 'unknown')}")
-    if model.get('type') == 'local':
+    print(f"Provider:        {provider.capitalize()}")
+    print(f"Model:           {provider_config.get('model', 'unknown')}")
+    if provider != 'local':
+        print(f"API Key:         {'*' * 8}{provider_config.get('api_key', '')[-4:] if provider_config.get('api_key') else 'Not set'}")
+    print(f"Base URL:        {provider_config.get('base_url', 'unknown')}")
+    if provider == 'local':
         print(f"Thinking:        {'Enabled' if model.get('use_thinking') else 'Disabled'}")
     print(f"Language:        {'中文 (Chinese)' if agent.get('lang') == 'cn' else 'English'}")
     print(f"Max Steps:       {agent.get('max_steps', 0) if agent.get('max_steps', 0) > 0 else 'Unlimited'}")
@@ -277,7 +390,7 @@ def _print_config_summary(config: dict):
 
 
 def run_config_wizard():
-    """Interactive configuration wizard for setting up model and agent."""
+    """Interactive configuration wizard for setting up model provider."""
     print("=" * 50)
     print("Phone Agent - Configuration Wizard")
     print("=" * 50)
@@ -290,113 +403,45 @@ def run_config_wizard():
     agent_config = config.get('agent', {})
     device_config = config.get('device', {})
 
-    # ========== Model Configuration ==========
+    # ========== Provider Selection ==========
     print("=" * 50)
-    print("1. Model Configuration")
+    print("1. Select Model Provider")
     print("=" * 50)
     print()
-    print("Select model type:")
-    print("  1. Remote API (ModelScope, etc.)")
-    print("  2. Local Model (Ollama)")
+    print("Select model provider:")
+    print("  1. Anthropic (Claude)")
+    print("  2. OpenAI (GPT)")
+    print("  3. Local (Ollama)")
     print()
 
-    choice = input("Enter your choice (1 or 2): ").strip()
+    current_provider = model_config.get('provider', 'anthropic')
+    provider_map = {'1': 'anthropic', '2': 'openai', '3': 'local'}
+    provider_display = {'anthropic': '1', 'openai': '2', 'local': '3'}
 
-    if choice == "2":
-        # Local model configuration
-        print()
-        print("Configuring Local Model (Ollama)")
-        print("-" * 50)
+    choice = input(f"Enter your choice (1/2/3) [{provider_display.get(current_provider, '1')}]: ").strip()
+    provider = provider_map.get(choice, provider_map.get(provider_display.get(current_provider, '1'), 'anthropic'))
 
-        default_base_url = model_config.get('base_url', 'http://localhost:11434/v1')
-        default_model = model_config.get('model_name', 'qwen3.5:4b')
-        default_api_key = model_config.get('api_key', 'ollama')
+    print()
+    print(f"Selected: {provider.capitalize()}")
 
-        print()
-        print(f"Checking Ollama service at {default_base_url}...", end=" ")
-        ollama_running = check_ollama_service(default_base_url)
+    # ========== Provider Configuration ==========
+    provider_settings = _configure_provider_interactive(config, provider)
 
-        if ollama_running:
-            print("✅ Running")
-            print()
-            models = list_ollama_models(default_base_url)
-            if models:
-                print("Available models:")
-                for i, model in enumerate(models, 1):
-                    print(f"  {i}. {model}")
-                print()
+    # Initialize model config with provider
+    if 'model' not in config:
+        config['model'] = {}
 
-                model_choice = input(f"Select a model (1-{len(models)}) or enter custom name: ").strip()
-                if model_choice.isdigit() and 1 <= int(model_choice) <= len(models):
-                    selected_model = models[int(model_choice) - 1]
-                elif model_choice:
-                    selected_model = model_choice
-                else:
-                    selected_model = default_model
-            else:
-                print("⚠️  No models found. You may need to pull a model first.")
-                print("   Run: ollama pull qwen3.5:4b")
-                selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
-        else:
-            print("❌ Not running")
-            print()
-            print("Please start Ollama service:")
-            print("  1. Install Ollama: https://ollama.com/download")
-            print("  2. Run: ollama serve")
-            print("  3. Pull a model: ollama pull qwen3.5:4b")
-            print()
+    config['model']['provider'] = provider
+    config['model'][provider] = provider_settings
 
-            base_url = input(f"Enter Ollama base URL [{default_base_url}]: ").strip() or default_base_url
-            selected_model = input(f"Enter model name [{default_model}]: ").strip() or default_model
-            api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
-            config['model'] = {
-                'type': 'local',
-                'base_url': base_url,
-                'model_name': selected_model,
-                'api_key': api_key,
-                'use_thinking': True
-            }
-            _save_config_interactive(config, config_path)
-            _configure_agent_interactive(config, agent_config)
-            _save_config_interactive(config, config_path)
-            return
-
-        enable_thinking = input("Enable thinking feature for local model? [Y/n]: ").strip().lower()
-        use_thinking = enable_thinking != 'n' and enable_thinking != 'no'
-
-        config['model'] = {
-            'type': 'local',
-            'base_url': default_base_url,
-            'model_name': selected_model,
-            'api_key': default_api_key,
-            'use_thinking': use_thinking
-        }
-
-    else:
-        # Remote API configuration
-        print()
-        print("Configuring Remote API")
-        print("-" * 50)
-
-        default_base_url = model_config.get('base_url', 'https://api-inference.modelscope.cn/v1')
-        default_model = model_config.get('model_name', 'ZhipuAI/AutoGLM-Phone-9B')
-        default_api_key = model_config.get('api_key', '')
-
-        base_url = input(f"Enter API base URL [{default_base_url}]: ").strip() or default_base_url
-        model_name = input(f"Enter model name [{default_model}]: ").strip() or default_model
-        api_key = input(f"Enter API key [{default_api_key}]: ").strip() or default_api_key
-
-        config['model'] = {
-            'type': 'remote',
-            'base_url': base_url,
-            'model_name': model_name,
-            'api_key': api_key,
-            'use_thinking': False
-        }
+    # Remove old format keys if they exist
+    for key in ['type', 'base_url', 'model_name', 'api_key']:
+        if key in config['model']:
+            del config['model'][key]
 
     _save_config_interactive(config, config_path)
     _configure_agent_interactive(config, agent_config)
     _configure_device_interactive(config, device_config)
     _configure_timing_interactive(config)
-    _save_config_interactive(config, config_path)
+    _save_config(config, config_path)
     _print_config_summary(config)
