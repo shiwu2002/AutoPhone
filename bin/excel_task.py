@@ -8,6 +8,9 @@ Excel 任务执行器 - 读取 Excel 文件内容，让智能体在手机上执�
 
     # 只保存答案文本（默认）
     python bin/excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch
+
+    # 对比 AI 回复和标准答案
+    python bin/excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch --compare-answer
 """
 
 import argparse
@@ -122,6 +125,7 @@ def process_excel_questions(
     model_cfg: ModelConfig,
     agent_cfg: AgentConfig,
     embed_screenshot: bool = False,
+    compare_answer: bool = False,
     column: str = None,
     progress_callback: callable = None
 ) -> list:
@@ -135,6 +139,7 @@ def process_excel_questions(
         model_cfg: 模型配置
         agent_cfg: Agent 配置
         embed_screenshot: 是否嵌入截图到 Excel
+        compare_answer: 是否对比 AI 回复和标准答案（由智能体自己对比）
         column: 指定读取的列名
         progress_callback: 进度回调函数
 
@@ -159,14 +164,33 @@ def process_excel_questions(
         if not question_col:
             question_col = df.columns[0]
 
+    # 查找标准答案列
+    standard_answer_col = None
+    if compare_answer:
+        for col in df.columns:
+            if '标准答案' in col.lower() or 'standard' in col.lower():
+                standard_answer_col = col
+                break
+        if not standard_answer_col:
+            print("⚠️ 未找到'标准答案'列，将不进行答案对比")
+            compare_answer = False
+
     questions = df[question_col].dropna().astype(str).tolist()
     questions = [q.strip() for q in questions if q.strip() and q != 'nan']
+
+    # 获取标准答案
+    standard_answers = []
+    if compare_answer:
+        standard_answers = df[standard_answer_col].dropna().astype(str).tolist()
+        standard_answers = [s.strip() for s in standard_answers if s.strip() and s != 'nan']
 
     if not questions:
         print("❌ 没有找到任何问题")
         return []
 
     print(f"📋 共找到 {len(questions)} 个问题")
+    if compare_answer:
+        print(f"📊 已加载 {len(standard_answers)} 个标准答案")
 
     agent = PhoneAgent(model_config=model_cfg, agent_config=agent_cfg)
     results = []
@@ -180,16 +204,65 @@ def process_excel_questions(
             progress_callback(i, len(questions), question)
 
         try:
-            if "{content}" in task_template:
-                full_task = task_template.replace("{content}", question)
+            # 构建任务，包含标准答案供智能体对比
+            if compare_answer and i-1 < len(standard_answers):
+                standard_answer = standard_answers[i-1]
+                if "{content}" in task_template:
+                    full_task = f"""{task_template.replace("{content}", question)}
+
+【答案对比任务】
+标准答案：{standard_answer}
+
+请你对比上面获取的答案和标准答案，计算相似度（0-100 的分数），考虑：
+1. 关键信息是否一致
+2. 核心要点是否覆盖
+
+请输出 JSON 格式的结果：
+{{"答案": "你的答案", "相似度": 85}}
+"""
+                else:
+                    full_task = f"""{task_template}
+
+问题：{question}
+
+【答案对比任务】
+标准答案：{standard_answer}
+
+请你对比上面获取的答案和标准答案，计算相似度（0-100 的分数），考虑：
+1. 关键信息是否一致
+2. 核心要点是否覆盖
+
+请输出 JSON 格式的结果：
+{{"答案": "你的答案", "相似度": 85}}
+"""
             else:
-                full_task = f"{task_template}\n\n问题：{question}"
+                if "{content}" in task_template:
+                    full_task = task_template.replace("{content}", question)
+                else:
+                    full_task = f"{task_template}\n\n问题：{question}"
 
             answer = agent.run(full_task)
+
+            # 尝试从答案中提取相似度
+            similarity_result = None
+            if compare_answer:
+                try:
+                    import re
+                    json_match = re.search(r'\{.*"相似度"\s*:\s*(\d+).*\}', answer, re.DOTALL)
+                    if json_match:
+                        similarity_result = {
+                            'overall_similarity': int(json_match.group(1)),
+                            'combined_similarity': int(json_match.group(1))
+                        }
+                        print(f"🔍 智能体评估的相似度：{similarity_result['overall_similarity']}%")
+                except Exception as e:
+                    print(f"⚠️ 提取相似度失败：{e}")
 
             result = {
                 'question': question,
                 'answer': answer,
+                'standard_answer': standard_answers[i-1] if compare_answer and i-1 < len(standard_answers) else None,
+                'similarity': similarity_result,
                 'success': True,
                 'screenshot_base64': None,
                 'steps': agent.step_count
@@ -215,6 +288,8 @@ def process_excel_questions(
             results.append({
                 'question': question,
                 'answer': '',
+                'standard_answer': None,
+                'similarity': None,
                 'success': False,
                 'screenshot_base64': None,
                 'error': str(e)
@@ -222,7 +297,7 @@ def process_excel_questions(
 
     # 保存结果到 Excel
     print(f"\n📊 保存结果到 {output_path}...")
-    save_results_to_excel(excel_path, output_path, results, embed_screenshot)
+    save_results_to_excel(excel_path, output_path, results, embed_screenshot, compare_answer)
 
     return results
 
@@ -231,9 +306,10 @@ def save_results_to_excel(
     excel_path: str,
     output_path: str,
     results: list,
-    embed_screenshot: bool = False
+    embed_screenshot: bool = False,
+    compare_answer: bool = False
 ):
-    """保存结果到 Excel 文件，支持嵌入截图"""
+    """保存结果到 Excel 文件，支持嵌入截图和答案对比"""
     if not PANDAS_AVAILABLE:
         print("❌ pandas 不可用")
         return
@@ -245,6 +321,12 @@ def save_results_to_excel(
         df['答案'] = ''
     if '状态' not in df.columns:
         df['状态'] = ''
+
+    # 答案对比相关列
+    if compare_answer:
+        if '相似度' not in df.columns:
+            df['相似度'] = ''
+
     if embed_screenshot and '截图' not in df.columns:
         df['截图'] = ''
 
@@ -253,6 +335,14 @@ def save_results_to_excel(
         if i < len(df):
             df.loc[i, '答案'] = result.get('answer', '')
             df.loc[i, '状态'] = '成功' if result.get('success', False) else f"失败：{result.get('error', '')}"
+
+            # 保存相似度结果
+            if compare_answer and result.get('similarity'):
+                df.loc[i, '相似度'] = result['similarity'].get('overall_similarity', '')
+
+    # 保存 Excel
+    df.to_excel(output_path, index=False, engine='openpyxl')
+    print(f"✅ 结果已保存到：{output_path}")
 
     # 保存 Excel
     df.to_excel(output_path, index=False, engine='openpyxl')
@@ -481,6 +571,9 @@ def main():
     # 批量执行并嵌入截图
     python excel_task.py --file questions.xlsx --task "请回答：{content}" --mode batch --embed-screenshot
 
+    # 对比 AI 回复和标准答案（计算相似度）
+    python excel_task.py --file questions.xlsx --task "请回答这个问题：{content}" --mode batch --compare-answer
+
     # 单个任务模式
     python excel_task.py --file questions.xlsx --task "打开微信，把所有问题发给张三"
         """
@@ -493,6 +586,7 @@ def main():
     parser.add_argument("--config", type=str, default="config.json", help="配置文件路径")
     parser.add_argument("--output", "-o", type=str, default=None, help="输出 Excel 文件路径")
     parser.add_argument("--embed-screenshot", action="store_true", default=False, help="将截图嵌入到 Excel 文档中")
+    parser.add_argument("--compare-answer", action="store_true", default=False, help="对比 AI 回复和标准答案并计算相似度")
     parser.add_argument("--mode", type=str, choices=["single", "batch"], default="single", help="执行模式")
     parser.add_argument("--max-questions", type=int, default=0, help="最大问题数（0=全部，batch 模式有效）")
     parser.add_argument("--verbose", "-v", action="store_true", help="显示详细输出")
@@ -645,6 +739,7 @@ def run_batch_mode(args, model_cfg, agent_cfg, output_file):
     print(f"   输出文件：{output_file}")
     print(f"   任务模板：{args.task[:50]}..." if len(args.task) > 50 else f"   任务模板：{args.task}")
     print(f"   嵌入截图：{'是' if args.embed_screenshot else '否'}")
+    print(f"   对比答案：{'是' if args.compare_answer else '否'}")
     if args.max_questions > 0:
         print(f"   最大问题数：{args.max_questions}")
     print("=" * 60)
@@ -657,6 +752,7 @@ def run_batch_mode(args, model_cfg, agent_cfg, output_file):
             model_cfg=model_cfg,
             agent_cfg=agent_cfg,
             embed_screenshot=args.embed_screenshot,
+            compare_answer=args.compare_answer,
             column=args.column
         )
 
