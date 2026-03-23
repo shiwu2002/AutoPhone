@@ -173,8 +173,9 @@ class CoordinateMapper:
 
     def to_1k_coordinate(self, x: float, y: float) -> Tuple[int, int]:
         """将原始坐标转换为 1K 坐标"""
-        scaled_x = int(x * self.scale_x)
-        scaled_y = int(y * self.scale_y)
+        # 使用四舍五入而非直接取整，减少精度丢失
+        scaled_x = int(x * self.scale_x + 0.5)
+        scaled_y = int(y * self.scale_y + 0.5)
         scaled_x = max(0, min(scaled_x, self.scaled_width - 1))
         scaled_y = max(0, min(scaled_y, self.scaled_height - 1))
         return scaled_x, scaled_y
@@ -184,15 +185,10 @@ class CoordinateMapper:
         """
         将 1K 坐标转换为原始坐标
 
-        优化：
-        1. 高精度浮点计算，最后统一取整
-        2. 添加点击偏移量，提高容错率
-        3. 边界检查
-
         Args:
             x: 1K 分辨率的 x 坐标
             y: 1K 分辨率的 y 坐标
-            add_click_offset: 是否添加点击偏移量（针对小参数模型）
+            add_click_offset: 是否添加点击偏移量（针对小参数模型，默认 True）
 
         Returns:
             (原始分辨率的 x 坐标，原始分辨率的 y 坐标)
@@ -203,14 +199,6 @@ class CoordinateMapper:
 
         # 添加点击偏移量（向区域中心偏移）
         if add_click_offset and self.enabled:
-            offset_x, offset_y = self.get_pixel_offset(x, y)
-
-            # 如果偏移量较大，说明取整误差大，手动调整
-            if offset_x > 0.3:
-                original_x_precise += self.click_offset_x
-            if offset_y > 0.3:
-                original_y_precise += self.click_offset_y
-
             # 额外添加固定偏移，让点击更靠近元素中心
             original_x_precise += self.click_offset_x * 0.5
             original_y_precise += self.click_offset_y * 0.5

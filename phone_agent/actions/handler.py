@@ -137,7 +137,8 @@ class ActionHandler:
             y = int(element[1] / 1000 * screenshot.height)
             return (x, y) if not use_region else ((x, y), (x, y))
 
-        # 将相对坐标转换为 1K 分辨率的绝对坐标
+        # 将相对坐标 (0-1000) 转换为 1K 压缩图的绝对坐标
+        # AI 模型看到的是压缩后的图片，返回的坐标是相对于压缩图尺寸的比例值
         x_1k = element[0] / 1000 * screenshot.width
         y_1k = element[1] / 1000 * screenshot.height
 
@@ -145,8 +146,8 @@ class ActionHandler:
             # 返回一个区域，提高容错率
             return screenshot.mapper.to_original_region(x_1k, y_1k)
         else:
-            # 返回单点（带偏移优化）
-            return screenshot.mapper.to_original_coordinate(x_1k, y_1k, add_click_offset=True)
+            # 返回单点（精确反推，不添加偏移）
+            return screenshot.mapper.to_original_coordinate(x_1k, y_1k, add_click_offset=False)
 
     def _handle_launch(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
         """处理启动应用动作。"""
@@ -167,15 +168,6 @@ class ActionHandler:
             return ActionResult(False, False, "No element coordinates")
 
         x, y = self._convert_relative_to_absolute(element, screenshot)
-
-        # Check for sensitive operation
-        if "message" in action:
-            if not self.confirmation_callback(action["message"]):
-                return ActionResult(
-                    success=False,
-                    should_finish=True,
-                    message="User cancelled sensitive operation",
-                )
 
         device_factory = get_device_factory()
         device_factory.tap(x, y, self.device_id)

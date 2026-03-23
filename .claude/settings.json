@@ -64,7 +64,9 @@
       "Bash(python -c \"import json; c = json.load\\(open\\(''config.json''\\)\\); print\\(''Provider:'', c[''model''].get\\(''provider''\\)\\); print\\(''Anthropic config:'', c[''model''].get\\(''anthropic''\\)\\); print\\(''OpenAI config:'', c[''model''].get\\(''openai''\\)\\); print\\(''Local config:'', c[''model''].get\\(''local''\\)\\)\")",
       "Bash(source /Volumes/data/python/AutoPhone/venv/bin/activate)",
       "Bash(venv/bin/python3 -c \":*)",
-      "Bash(venv/bin/python3 -m py_compile bin/excel_task.py)"
+      "Bash(venv/bin/python3 -m py_compile bin/excel_task.py)",
+      "Bash(python test_coordinate.py)",
+      "Bash(python test_coordinate_precise.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans"
