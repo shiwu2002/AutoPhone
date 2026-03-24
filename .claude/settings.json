@@ -85,7 +85,9 @@
       "Bash(python -c \"from phone_agent import PhoneAgent; print\\(''PhoneAgent 导入成功''\\)\")",
       "Bash(ls -la /Volumes/data/python/AutoPhone/*.json)",
       "Bash(ls -la /Volumes/data/python/AutoPhone/*.xlsx)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -m py_compile phone_agent/agent.py phone_agent/config/manager.py server.py main.py bin/excel_task.py phone_agent/batch_runner.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans",

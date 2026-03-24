@@ -26,6 +26,7 @@ SYSTEM_PROMPT = (
 - 示例：
   <think> 用户要求打开微信，我需要启动微信应用。</think>
   <answer>do(action="Launch", app="微信")</answer>
+-查看所有问答只需要执行2次滑动操作即可，不要一直翻页。
 
 **可用工具集索引：**
 - adb_ui: ADB UI 交互工具集 (点击、滑动等)
