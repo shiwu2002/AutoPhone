@@ -281,7 +281,8 @@ def process_excel_questions(
             results.append(result)
             print(f"✅ 完成：{answer[:50] if answer else '无结果'}...")
 
-            agent.reset()
+            # 注意：不在这里调用 agent.reset()，因为下次循环 agent.run() 会自动清空上下文
+            # 这样可以避免状态污染问题，每个问题都有独立的执行环境
 
         except Exception as e:
             print(f"❌ 执行失败：{e}")

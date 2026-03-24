@@ -231,8 +231,8 @@ class ExcelTool:
                 success_count += 1
                 logger.info(f"✅ 完成：{answer[:50] if answer else '无结果'}...")
 
-                # 重置 Agent 状态
-                agent.reset()
+                # 注意：不在这里调用 agent.reset()，因为下次循环 agent.run() 会自动清空上下文
+                # 这样可以避免状态污染问题
 
             except Exception as e:
                 logger.error(f"❌ 执行失败：{e}")
