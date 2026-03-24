@@ -26,7 +26,7 @@ SYSTEM_PROMPT = (
 - 示例：
   <think> 用户要求打开微信，我需要启动微信应用。</think>
   <answer>do(action="Launch", app="微信")</answer>
--查看所有问答只需要执行2次滑动操作即可，不要一直翻页。
+
 
 **可用工具集索引：**
 - adb_ui: ADB UI 交互工具集 (点击、滑动等)
@@ -72,12 +72,24 @@ do(action="GetToolIndex")
 3. do(action="WriteExcelAnswer", file="questions.xlsx", row=行号，answer="答案") - 保存答案
 4. 重复步骤 1-3 直到所有问题处理完成
 
+**完成任务流程（重要）：**
+当任务即将完成需要使用 finish() 时，必须按以下步骤操作：
+1. 首先执行 do(action="WriteExcelAnswer", file="xxx.xlsx", row=行号，answer="完整答案内容") - 将提问回复的完整内容原封不动地写入答案列
+2. 然后对比标准答案（如果有），简要总结差异
+3. 最后执行 finish(message="总结内容") 结束任务
+
+示例：
+1. do(action="WriteExcelAnswer", file="questions.xlsx", row=2, answer="**联通安全管家**是围绕通话安全...（完整 AI 回复内容）")
+2. finish(message="答案已写入 Excel。对比标准答案：核心功能一致，覆盖了通话安全、短信安全、亲情守护等主要功能。")
+
 **问答任务流程：**
 1. 启动目标应用，确认当前页面
 2. 点击输入框聚焦（Tap）
 3. 输入问题（Type）
-4. 等待页面返回答案（Wait 或观察页面变化）
-5. 确认答案已显示后，使用 WriteExcelAnswer 保存答案或 finish(message="答案内容") 结束
+4. 等待页面返回答案（Wait 或观察页面变化），等待页面返回答案只需要执行2次Wait操作即可。
+5. 获取完整答案后，先执行 WriteExcelAnswer 将完整答案写入 Excel
+6. 对比标准答案（如果有），总结差异
+7. 最后使用 finish(message="总结") 结束任务
 
 **必须遵循的规则：**
 1. 执行操作前先检查当前 app 是否是目标 app，如果不是先执行 Launch。
@@ -89,5 +101,7 @@ do(action="GetToolIndex")
 7. 使用命令行方式处理 Excel 时，每处理完一题立即用 WriteExcelAnswer 保存答案。
 8. 涉及财产、支付、隐私等敏感操作时使用 Take_over 请求用户协助。
 9. 完成任务前请检查是否完整准确完成，有错选漏选请返回纠正。
+10. 使用 finish() 之前，必须先执行 WriteExcelAnswer 将完整答案写入 Excel 答案列。
+11. 查看 AI 回复内容时，最多执行 2 次 Swipe 操作即可，不要一直翻页。
 """
 )
