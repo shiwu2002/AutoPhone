@@ -1,4 +1,10 @@
-"""批量问题执行器 - 从 Excel/TXT 读取问题并批量执行。"""
+"""批量问题执行器 - 从 Excel/TXT 读取问题并批量执行。
+
+优化点:
+1. 添加 AgentPool 实现连接复用
+2. 支持复用 ModelClient 实例避免重复初始化
+3. 优化资源管理
+"""
 
 import json
 import os
@@ -8,9 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from phone_agent import PhoneAgent
-from phone_agent.agent import AgentConfig
-from phone_agent.device_factory import get_device_factory
+from phone_agent.agent import AgentConfig, PhoneAgent
+from phone_agent.device_factory import get_device_manager
 from phone_agent.model import ModelConfig
 from phone_agent.utils.logger import setup_logger
 
@@ -57,27 +62,71 @@ class BatchResult:
 class BatchConfig:
     """批量执行的配置。"""
     # 文件相关
-    question_column: str = "问题"  # Excel 中问题所在的列名
-    answer_column: str = "答案"  # 答案列名
-    screenshot_column: str = "截图路径"  # 截图路径列名
-    status_column: str = "状态"  # 状态列名
+    question_column: str = "问题"
+    answer_column: str = "答案"
+    screenshot_column: str = "截图路径"
+    status_column: str = "状态"
 
     # 执行相关
-    max_questions: int = 0  # 最大执行问题数，0 表示全部
-    skip_existing: bool = True  # 跳过已有答案的问题
-    continue_on_error: bool = True  # 出错时继续执行下一个
+    max_questions: int = 0
+    skip_existing: bool = True
+    continue_on_error: bool = True
 
     # 截图相关
-    save_screenshot: bool = True  # 是否保存截图
-    screenshot_dir: str = "./batch_screenshots"  # 截图保存目录
+    save_screenshot: bool = True
+    screenshot_dir: str = "./batch_screenshots"
 
     # 进度保存
-    save_progress: bool = True  # 是否保存进度
-    progress_interval: int = 1  # 每执行几个问题保存一次进度
+    save_progress: bool = True
+    progress_interval: int = 1
 
     # Agent 相关
-    max_steps: int = 50  # 每个问题的最大步数
-    verbose: bool = False  # 是否显示详细输出
+    max_steps: int = 50
+    verbose: bool = False
+
+    # 资源复用
+    reuse_agent: bool = True  # 是否复用 Agent 实例
+
+
+class AgentPool:
+    """
+    Agent 对象池 - 复用 ModelClient 和连接资源。
+
+    避免每个问题都创建新的 Agent 实例，减少资源开销。
+    """
+
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        agent_config: AgentConfig,
+    ):
+        self.model_config = model_config
+        self.agent_config = agent_config
+        self._agent: Optional[PhoneAgent] = None
+
+    def acquire(self) -> PhoneAgent:
+        """获取一个 Agent 实例。"""
+        if self._agent is None:
+            self._agent = PhoneAgent(
+                model_config=self.model_config,
+                agent_config=self.agent_config,
+            )
+            logger.info("AgentPool: Created new Agent instance")
+        else:
+            # 复用现有 Agent，重置状态
+            self._agent.reset()
+            logger.debug("AgentPool: Reusing existing Agent instance")
+        return self._agent
+
+    def release(self, agent: PhoneAgent) -> None:
+        """释放 Agent 实例（回收到池中）。"""
+        # 保持引用，下次 acquire 时复用
+        pass
+
+    def close(self) -> None:
+        """关闭池，释放所有资源。"""
+        self._agent = None
+        logger.info("AgentPool: Closed")
 
 
 class BatchQuestionRunner:
@@ -86,12 +135,6 @@ class BatchQuestionRunner:
 
     从 Excel 或 TXT 文件读取问题列表，逐个使用 PhoneAgent 执行，
     并将结果和截图保存回 Excel 文件。
-
-    Example:
-        >>> runner = BatchQuestionRunner()
-        >>> runner.load_questions("questions.xlsx")
-        >>> results = runner.run_batch()
-        >>> runner.export_results("results.xlsx")
     """
 
     def __init__(
@@ -113,6 +156,9 @@ class BatchQuestionRunner:
         self.results: list[BatchResult] = []
         self.progress_file: Optional[str] = None
 
+        # Agent 池（资源复用）
+        self._agent_pool: Optional[AgentPool] = None
+
         # 创建截图保存目录
         if self.batch_config.save_screenshot:
             os.makedirs(self.batch_config.screenshot_dir, exist_ok=True)
@@ -122,20 +168,7 @@ class BatchQuestionRunner:
         file_path: str,
         column: Optional[str] = None,
     ) -> list[str]:
-        """
-        从文件加载问题列表。
-
-        Args:
-            file_path: 文件路径（支持 .xlsx, .xls, .txt）
-            column: 问题所在的列名（Excel 文件需要）
-
-        Returns:
-            问题列表
-
-        Raises:
-            FileNotFoundError: 文件不存在
-            ValueError: 文件格式不支持或列名无效
-        """
+        """从文件加载问题列表。"""
         path = Path(file_path)
 
         if not path.exists():
@@ -184,15 +217,7 @@ class BatchQuestionRunner:
         self,
         file_path: str,
     ) -> dict[str, BatchResult]:
-        """
-        从现有的 Excel 文件加载已有结果（用于断点续跑）。
-
-        Args:
-            file_path: Excel 文件路径
-
-        Returns:
-            已有问题到结果的映射
-        """
+        """从现有的 Excel 文件加载已有结果（用于断点续跑）。"""
         if not PANDAS_AVAILABLE:
             return {}
 
@@ -218,7 +243,6 @@ class BatchQuestionRunner:
                 answer = str(row.get(answer_col, "")).strip() if answer_col in df.columns else ""
                 screenshot = str(row.get(screenshot_col, "")).strip() if screenshot_col in df.columns else ""
 
-                # 如果已有答案或状态为成功，则认为是已完成的
                 if status == "成功" or (answer and answer != "nan"):
                     results[question] = BatchResult(
                         question=question,
@@ -239,17 +263,7 @@ class BatchQuestionRunner:
         agent_config: Optional[AgentConfig] = None,
         confirmation_callback: Optional[Callable[[str], bool]] = None,
     ) -> list[BatchResult]:
-        """
-        批量执行问题。
-
-        Args:
-            questions: 问题列表，如果为 None 则使用已加载的问题
-            agent_config: Agent 配置
-            confirmation_callback: 确认回调
-
-        Returns:
-            结果列表
-        """
+        """批量执行问题。"""
         if questions is None:
             questions = self.questions
 
@@ -267,42 +281,59 @@ class BatchQuestionRunner:
         completed = 0
         failed = 0
 
-        for i, question in enumerate(questions, 1):
-            logger.info(f"\n{'='*60}")
-            logger.info(f"Question {i}/{len(questions)}: {question[:50]}...")
-            logger.info(f"{'='*60}")
+        # 创建 Agent 池（资源复用）
+        use_pool = self.batch_config.reuse_agent
+        if use_pool:
+            self._agent_pool = AgentPool(
+                model_config=self.model_config,
+                agent_config=agent_config or AgentConfig(
+                    max_steps=self.batch_config.max_steps,
+                    verbose=self.batch_config.verbose,
+                ),
+            )
 
-            try:
-                result = self._run_single_question(
-                    question, agent_config, confirmation_callback
-                )
-                self.results.append(result)
+        try:
+            for i, question in enumerate(questions, 1):
+                logger.info(f"\n{'='*60}")
+                logger.info(f"Question {i}/{len(questions)}: {question[:50]}...")
+                logger.info(f"{'='*60}")
 
-                if result.success:
-                    completed += 1
-                else:
+                try:
+                    result = self._run_single_question(
+                        question, agent_config, confirmation_callback
+                    )
+                    self.results.append(result)
+
+                    if result.success:
+                        completed += 1
+                    else:
+                        failed += 1
+
+                except Exception as e:
+                    logger.error(f"Question failed with error: {e}")
                     failed += 1
 
-            except Exception as e:
-                logger.error(f"Question failed with error: {e}")
-                failed += 1
+                    if not self.batch_config.continue_on_error:
+                        raise
 
-                if not self.batch_config.continue_on_error:
-                    raise
+                    self.results.append(BatchResult(
+                        question=question,
+                        answer="",
+                        success=False,
+                        error_message=str(e),
+                    ))
 
-                # 记录失败
-                self.results.append(BatchResult(
-                    question=question,
-                    answer="",
-                    success=False,
-                    error_message=str(e),
-                ))
+                # 保存进度
+                if self.batch_config.save_progress and i % self.batch_config.progress_interval == 0:
+                    self._save_progress()
 
-            # 保存进度
-            if self.batch_config.save_progress and i % self.batch_config.progress_interval == 0:
-                self._save_progress()
+                logger.info(f"Progress: {completed} completed, {failed} failed")
 
-            logger.info(f"Progress: {completed} completed, {failed} failed")
+        finally:
+            # 清理资源
+            if self._agent_pool:
+                self._agent_pool.close()
+                self._agent_pool = None
 
         logger.info(f"\nBatch execution finished: {completed} completed, {failed} failed")
         return self.results
@@ -313,28 +344,20 @@ class BatchQuestionRunner:
         agent_config: Optional[AgentConfig] = None,
         confirmation_callback: Optional[Callable[[str], bool]] = None,
     ) -> BatchResult:
-        """
-        执行单个问题。
-
-        Args:
-            question: 问题
-            agent_config: Agent 配置
-            confirmation_callback: 确认回调
-
-        Returns:
-            执行结果
-        """
+        """执行单个问题。"""
         start_time = datetime.now()
 
-        # 创建新的 Agent 实例（确保上下文隔离）
-        agent = PhoneAgent(
-            model_config=self.model_config,
-            agent_config=agent_config or AgentConfig(
-                max_steps=self.batch_config.max_steps,
-                verbose=self.batch_config.verbose,
-            ),
-            confirmation_callback=confirmation_callback,
-        )
+        # 使用 Agent 池或直接创建
+        if self._agent_pool:
+            agent = self._agent_pool.acquire()
+        else:
+            agent = PhoneAgent(
+                model_config=self.model_config,
+                agent_config=agent_config or AgentConfig(
+                    max_steps=self.batch_config.max_steps,
+                    verbose=self.batch_config.verbose,
+                ),
+            )
 
         try:
             # 执行任务
@@ -371,20 +394,12 @@ class BatchQuestionRunner:
             )
 
     def _save_screenshot(self, question: str) -> str:
-        """
-        保存当前屏幕截图。
-
-        Args:
-            question: 问题（用于生成文件名）
-
-        Returns:
-            截图文件路径
-        """
+        """保存当前屏幕截图。"""
         try:
-            device_factory = get_device_factory()
-            screenshot = device_factory.get_screenshot(enable_compression=False)
+            device_manager = get_device_manager()
+            screenshot = device_manager.get_screenshot(enable_compression=False)
 
-            # 生成文件名（使用时间戳和问题摘要）
+            # 生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             question_hash = abs(hash(question)) % 10000
             filename = f"screenshot_{timestamp}_{question_hash}.png"
@@ -392,7 +407,7 @@ class BatchQuestionRunner:
 
             # 保存截图
             with open(filepath, "wb") as f:
-                f.write(screenshot.data)
+                f.write(screenshot.base64_data)
 
             logger.info(f"Screenshot saved: {filepath}")
             return filepath
@@ -422,13 +437,7 @@ class BatchQuestionRunner:
         output_path: str,
         format: str = "excel",
     ) -> None:
-        """
-        导出结果到文件。
-
-        Args:
-            output_path: 输出文件路径
-            format: 输出格式（excel 或 json）
-        """
+        """导出结果到文件。"""
         if not self.results:
             logger.warning("No results to export")
             return
@@ -497,14 +506,14 @@ class BatchQuestionRunner:
 
             # 设置列宽
             column_widths = {
-                "A": 10,  # 序号
-                "B": 50,  # 问题
-                "C": 80,  # 答案
-                "D": 40,  # 截图路径
-                "E": 10,  # 状态
-                "F": 10,  # 执行步数
-                "G": 20,  # 开始时间
-                "H": 20,  # 结束时间
+                "A": 10,
+                "B": 50,
+                "C": 80,
+                "D": 40,
+                "E": 10,
+                "F": 10,
+                "G": 20,
+                "H": 20,
             }
 
             for col, width in column_widths.items():
@@ -520,36 +529,30 @@ def run_batch_from_config(
     input_file: str,
     output_file: str,
 ) -> list[BatchResult]:
-    """
-    从配置文件运行批量任务。
-
-    Args:
-        config_path: config.json 路径
-        input_file: 输入问题文件
-        output_file: 输出结果文件
-
-    Returns:
-        结果列表
-    """
+    """从配置文件运行批量任务。"""
     # 加载配置
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    model_config = config.get("model", {})
+    model_config_dict = config.get("model", {})
     agent_config_dict = config.get("agent", {})
 
     # 创建模型配置
+    provider = model_config_dict.get("provider", "local")
+    provider_config = model_config_dict.get(provider, {})
+
     model_cfg = ModelConfig(
-        base_url=model_config.get("base_url", "http://localhost:11434/v1"),
-        model_name=model_config.get("model_name", "qwen3.5:4b"),
-        api_key=model_config.get("api_key", "ollama"),
-        use_thinking=model_config.get("use_thinking", False),
+        base_url=provider_config.get("base_url", "http://localhost:11434/v1"),
+        model_name=provider_config.get("model", "qwen3.5:4b"),
+        api_key=provider_config.get("api_key", "ollama"),
+        use_thinking=model_config_dict.get("use_thinking", False),
     )
 
     # 创建批量配置
     batch_cfg = BatchConfig(
         max_steps=agent_config_dict.get("max_steps", 50),
         verbose=agent_config_dict.get("verbose", False),
+        reuse_agent=True,  # 默认启用资源复用
     )
 
     # 创建执行器

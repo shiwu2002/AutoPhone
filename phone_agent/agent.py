@@ -286,6 +286,9 @@ class PhoneAgent:
             logger.info("-" * 50)
             response = self.model_client.request(self._context)
 
+            # 调试：打印原始响应
+            logger.debug(f"Raw response action: {response.action[:200] if response.action else 'EMPTY'}")
+
             # Log thinking process if available
             if response.thinking and self.agent_config.verbose:
                 logger.info(response.thinking)

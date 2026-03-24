@@ -7,7 +7,7 @@ from phone_agent.device_factory import get_device_factory
 from phone_agent.actions.result import ActionResult
 
 
-def handle_launch(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_launch(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理启动应用动作。
 

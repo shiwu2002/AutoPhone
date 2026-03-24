@@ -1,15 +1,12 @@
-"""用于处理 AI 模型输出的动作处理器。"""
+"""用于处理 AI 模型输出的动作处理器 - 基于装饰器注册模式。"""
 
 import ast
-import time
 from typing import Any, Callable, Optional
 
 from phone_agent.adb.screenshot import Screenshot
-from phone_agent.config.timing import TIMING_CONFIG
-from phone_agent.device_factory import get_device_factory
-from phone_agent.tools.registry import get_registry, list_tool_sets, get_tool_set_info, get_tool_details
 from phone_agent.actions.result import ActionResult
-from phone_agent.actions.sets import TOOL_HANDLERS
+from phone_agent.actions.registry import get_registry
+from phone_agent.tools.registry import list_tool_sets, get_tool_set_info, get_tool_details
 from phone_agent.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -22,7 +19,6 @@ class ActionHandler:
     Args:
         device_id: 用于多设备设置的可选 ADB 设备 ID。
         confirmation_callback: 用于敏感操作确认的可选回调。
-            应返回 True 以继续，False 以取消。
         takeover_callback: 用于接管请求的可选回调（登录、验证码等）。
         model_config: 模型配置（用于 Excel 批量处理工具）。
         agent_config: Agent 配置（用于 Excel 批量处理工具）。
@@ -43,24 +39,20 @@ class ActionHandler:
         self.agent_config = agent_config
         self.registry = get_registry()
 
-    def execute(
-        self, action: dict[str, Any], screenshot: Screenshot
-    ) -> ActionResult:
+    def execute(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
         """执行来自 AI 模型的动作。
 
         Args:
             action: 来自模型的动作字典
-            screenshot: Screenshot 对象，包含屏幕尺寸和坐标映射器
+            screenshot: Screenshot 对象
 
         Returns:
-            ActionResult: 动作执行结果，包含成功状态和是否结束
+            ActionResult: 动作执行结果
         """
         action_type = action.get("_metadata")
 
         if action_type == "finish":
-            return ActionResult(
-                success=True, should_finish=True, message=action.get("message")
-            )
+            return ActionResult(success=True, should_finish=True, message=action.get("message"))
 
         # 处理工具查询动作
         if action_type == "query":
@@ -81,8 +73,8 @@ class ActionHandler:
                 message="No action specified in the command",
             )
 
-        # 先尝试从工具集处理器中查找
-        handler_method = TOOL_HANDLERS.get(action_name)
+        # 从注册表获取处理器
+        handler_method = self.registry.get_handler(action_name)
 
         if handler_method is None:
             return ActionResult(
@@ -92,8 +84,8 @@ class ActionHandler:
             )
 
         try:
-            # 调用处理函数，传入必要的上下文
-            return handler_method(
+            # 调用处理函数，传入上下文
+            result = handler_method(
                 action,
                 screenshot,
                 device_id=self.device_id,
@@ -101,9 +93,10 @@ class ActionHandler:
                 agent_config=self.agent_config,
                 takeover_callback=self.takeover_callback,
             )
+            return result
         except TypeError:
-            # 向后兼容：如果处理函数不需要额外参数
-            return handler_method(action, screenshot)
+            # 向后兼容：如果处理函数不接受额外参数，只传入基本参数
+            return handler_method(action, screenshot, device_id=self.device_id)
         except Exception as e:
             logger.error(f"Action failed: {e}", exc_info=True)
             return ActionResult(
@@ -111,20 +104,10 @@ class ActionHandler:
             )
 
     def _handle_query_action(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:
-        """
-        处理工具查询动作。
-
-        Args:
-            action: 查询动作字典
-            screenshot: Screenshot 对象
-
-        Returns:
-            ActionResult: 查询结果
-        """
+        """处理工具查询动作。"""
         query_type = action.get("query_type")
 
         if query_type == "GetToolIndex":
-            # 获取所有工具集索引
             tool_sets = list_tool_sets()
             message = "可用工具集索引：\n\n"
             for ts in tool_sets:
@@ -133,7 +116,6 @@ class ActionHandler:
             return ActionResult(True, False, message=message)
 
         elif query_type == "GetToolSet":
-            # 获取指定工具集的详细信息
             set_name = action.get("set_name")
             if not set_name:
                 return ActionResult(False, False, "GetToolSet 需要 set_name 参数")
@@ -152,7 +134,6 @@ class ActionHandler:
             return ActionResult(True, False, message=message)
 
         elif query_type == "GetTool":
-            # 获取具体工具的详细使用说明
             set_name = action.get("set_name")
             tool_name = action.get("tool_name")
 
@@ -177,121 +158,92 @@ class ActionHandler:
 
     @staticmethod
     def _default_confirmation(message: str) -> bool:
-        """使用控制台输入的默认确认回调。"""
+        """默认确认回调。"""
         response = input(f"Sensitive operation: {message}\nConfirm? (Y/N): ")
         return response.upper() == "Y"
 
     @staticmethod
     def _default_takeover(message: str) -> None:
-        """使用控制台输入的默认接管回调。"""
+        """默认接管回调。"""
         input(f"{message}\nPress Enter after completing manual operation...")
 
 
 def parse_action(response: str) -> dict[str, Any]:
-    """
-    从模型响应中解析动作。
-
-    Args:
-        response: 来自模型的原始响应字符串。
-
-    Returns:
-        解析后的动作字典。
-
-    Raises:
-        ValueError: 如果响应无法解析。
-    """
+    """从模型响应中解析动作。"""
     print(f"Parsing action: {response}")
     try:
         response = response.strip()
 
-        # 处理工具查询动作
+        # 工具查询动作
         if response.startswith('do(action="GetToolIndex")'):
             return {"_metadata": "query", "query_type": "GetToolIndex"}
         elif response.startswith('do(action="GetToolSet"'):
-            try:
-                response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-                tree = ast.parse(response, mode="eval")
-                if isinstance(tree.body, ast.Call):
-                    call = tree.body
-                    action = {"_metadata": "query", "query_type": "GetToolSet"}
-                    for keyword in call.keywords:
-                        key = keyword.arg
-                        if key is None:
-                            raise ValueError("Unnamed keyword argument")
-                        value = ast.literal_eval(keyword.value)
-                        action[key] = value
-                    return action
-            except (SyntaxError, ValueError) as e:
-                raise ValueError(f"Failed to parse GetToolSet: {e}")
+            return _parse_query_action(response, "GetToolSet")
         elif response.startswith('do(action="GetTool"'):
-            try:
-                response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-                tree = ast.parse(response, mode="eval")
-                if isinstance(tree.body, ast.Call):
-                    call = tree.body
-                    action = {"_metadata": "query", "query_type": "GetTool"}
-                    for keyword in call.keywords:
-                        key = keyword.arg
-                        if key is None:
-                            raise ValueError("Unnamed keyword argument")
-                        value = ast.literal_eval(keyword.value)
-                        action[key] = value
-                    return action
-            except (SyntaxError, ValueError) as e:
-                raise ValueError(f"Failed to parse GetTool: {e}")
+            return _parse_query_action(response, "GetTool")
 
-        # 处理 Type/Type_Name 特殊情况
-        if response.startswith('do(action="Type"') or response.startswith(
-            'do(action="Type_Name"'
-        ):
+        # Type/Type_Name 特殊情况
+        if response.startswith('do(action="Type"') or response.startswith('do(action="Type_Name"'):
             text = response.split("text=", 1)[1][1:-2]
-            action = {"_metadata": "do", "action": "Type", "text": text}
+            return {"_metadata": "do", "action": "Type", "text": text}
+
+        # 标准 do 动作
+        elif response.startswith("do"):
+            response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+            tree = ast.parse(response, mode="eval")
+            if not isinstance(tree.body, ast.Call):
+                raise ValueError("Expected a function call")
+
+            call = tree.body
+            action = {"_metadata": "do"}
+            for keyword in call.keywords:
+                key = keyword.arg
+                if key is None:
+                    raise ValueError("Unnamed keyword argument in action")
+                value = ast.literal_eval(keyword.value)
+                action[key] = value
+
             return action
 
-        # 处理标准 do 动作
-        elif response.startswith("do"):
-            try:
-                response = response.replace('\n', '\\n')
-                response = response.replace('\r', '\\r')
-                response = response.replace('\t', '\\t')
-
-                tree = ast.parse(response, mode="eval")
-                if not isinstance(tree.body, ast.Call):
-                    raise ValueError("Expected a function call")
-
-                call = tree.body
-                action = {"_metadata": "do"}
-                for keyword in call.keywords:
-                    key = keyword.arg
-                    if key is None:
-                        raise ValueError("Unnamed keyword argument in action")
-                    value = ast.literal_eval(keyword.value)
-                    action[key] = value
-
-                return action
-            except (SyntaxError, ValueError) as e:
-                raise ValueError(f"Failed to parse do() action: {e}")
-
-        # 处理 finish 动作
+        # finish 动作
         elif response.startswith("finish"):
-            action = {
+            return {
                 "_metadata": "finish",
                 "message": response.replace("finish(message=", "")[1:-2],
             }
-            return action
         else:
             raise ValueError(f"Failed to parse action: {response}")
     except Exception as e:
         raise ValueError(f"Failed to parse action: {e}")
 
 
+def _parse_query_action(response: str, query_type: str) -> dict[str, Any]:
+    """解析工具查询动作。"""
+    try:
+        response = response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+        tree = ast.parse(response, mode="eval")
+        if isinstance(tree.body, ast.Call):
+            call = tree.body
+            action = {"_metadata": "query", "query_type": query_type}
+            for keyword in call.keywords:
+                key = keyword.arg
+                if key is None:
+                    raise ValueError("Unnamed keyword argument")
+                value = ast.literal_eval(keyword.value)
+                action[key] = value
+            return action
+    except (SyntaxError, ValueError) as e:
+        raise ValueError(f"Failed to parse {query_type}: {e}")
+    return {"_metadata": "query", "query_type": query_type}
+
+
 def do(**kwargs: Any) -> dict[str, Any]:
-    """用于创建 'do' 动作的辅助函数。"""
+    """创建 'do' 动作的辅助函数。"""
     kwargs["_metadata"] = "do"
     return kwargs
 
 
 def finish(**kwargs: Any) -> dict[str, Any]:
-    """用于创建 'finish' 动作的辅助函数。"""
+    """创建 'finish' 动作的辅助函数。"""
     kwargs["_metadata"] = "finish"
     return kwargs

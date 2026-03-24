@@ -11,6 +11,7 @@ def handle_takeover(
     screenshot: Screenshot,
     device_id: Optional[str] = None,
     takeover_callback: Optional[Callable[[str], None]] = None,
+    **kwargs,
 ) -> ActionResult:
     """
     处理接管请求动作（登录、验证码等）。
@@ -34,6 +35,7 @@ def handle_interact(
     action: dict[str, Any],
     screenshot: Screenshot,
     device_id: Optional[str] = None,
+    **kwargs,
 ) -> ActionResult:
     """
     处理交互请求动作（需要用户选择）。
@@ -53,6 +55,7 @@ def handle_note(
     action: dict[str, Any],
     screenshot: Screenshot,
     device_id: Optional[str] = None,
+    **kwargs,
 ) -> ActionResult:
     """
     处理笔记动作（记录页面内容）。
@@ -74,6 +77,7 @@ def handle_call_api(
     action: dict[str, Any],
     screenshot: Screenshot,
     device_id: Optional[str] = None,
+    **kwargs,
 ) -> ActionResult:
     """
     处理 API 调用动作（总结/评论内容）。

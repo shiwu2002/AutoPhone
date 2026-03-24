@@ -8,7 +8,7 @@ from phone_agent.device_factory import get_device_factory
 from phone_agent.actions.result import ActionResult
 
 
-def handle_back(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_back(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理返回动作。
 
@@ -25,7 +25,7 @@ def handle_back(action: dict[str, Any], screenshot: Screenshot, device_id: Optio
     return ActionResult(True, False)
 
 
-def handle_home(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_home(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理主页动作。
 
@@ -42,7 +42,7 @@ def handle_home(action: dict[str, Any], screenshot: Screenshot, device_id: Optio
     return ActionResult(True, False)
 
 
-def handle_wait(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_wait(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理等待动作。
 

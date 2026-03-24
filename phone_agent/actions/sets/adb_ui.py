@@ -5,6 +5,9 @@ from typing import Any, Optional
 from phone_agent.adb.screenshot import Screenshot
 from phone_agent.device_factory import get_device_factory
 from phone_agent.actions.result import ActionResult
+from phone_agent.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def _convert_relative_to_absolute(
@@ -38,7 +41,7 @@ def _convert_relative_to_absolute(
         return screenshot.mapper.to_original_coordinate(x_1k, y_1k, add_click_offset=False)
 
 
-def handle_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理点击动作。
 
@@ -46,6 +49,7 @@ def handle_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Option
         action: 动作字典，包含 element=[x,y]
         screenshot: Screenshot 对象
         device_id: 设备 ID
+        **kwargs: 额外参数（用于向后兼容）
 
     Returns:
         ActionResult: 执行结果
@@ -56,11 +60,15 @@ def handle_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Option
 
     x, y = _convert_relative_to_absolute(element, screenshot)
     device_factory = get_device_factory()
-    device_factory.tap(x, y, device_id)
-    return ActionResult(True, False)
+    try:
+        device_factory.tap(x, y, device_id)
+        return ActionResult(True, False)
+    except Exception as e:
+        logger.error(f"handle_tap: 执行失败 - {e}", exc_info=True)
+        return ActionResult(False, False, f"Tap failed: {e}")
 
 
-def handle_double_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_double_tap(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理双击动作。
 
@@ -82,7 +90,7 @@ def handle_double_tap(action: dict[str, Any], screenshot: Screenshot, device_id:
     return ActionResult(True, False)
 
 
-def handle_long_press(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_long_press(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理长按动作。
 
@@ -104,7 +112,7 @@ def handle_long_press(action: dict[str, Any], screenshot: Screenshot, device_id:
     return ActionResult(True, False)
 
 
-def handle_swipe(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None) -> ActionResult:
+def handle_swipe(action: dict[str, Any], screenshot: Screenshot, device_id: Optional[str] = None, **kwargs) -> ActionResult:
     """
     处理滑动动作。
 

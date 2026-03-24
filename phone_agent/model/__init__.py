@@ -1,5 +1,12 @@
-"""用于 AI 推理的模型客户端模块。"""
+"""模型客户端模块 - 按提供商拆分的多文件架构。"""
 
-from phone_agent.model.client import ModelClient, ModelConfig
+from .base import ModelConfig, ModelResponse, MessageBuilder
+from .factory import create_model_client, ModelClient
 
-__all__ = ["ModelClient", "ModelConfig"]
+__all__ = [
+    "ModelConfig",
+    "ModelResponse",
+    "MessageBuilder",
+    "ModelClient",
+    "create_model_client",
+]

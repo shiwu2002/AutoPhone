@@ -100,15 +100,29 @@ def detect_and_set_adb_keyboard(device_id: str | None = None) -> str:
         capture_output=True,
         text=True,
     )
-    current_ime = (result.stdout + result.stderr).strip()
+    # 只使用 stdout，去除空白字符
+    current_ime = result.stdout.strip()
+
+    # 如果 stdout 为空，尝试 stderr
+    if not current_ime:
+        current_ime = result.stderr.strip()
+
+    print(f"[ADB Keyboard] 当前 IME: {current_ime}")
 
     # 如果当前不是 ADB Keyboard，则进行切换
     if "com.android.adbkeyboard/.AdbIME" not in current_ime:
-        subprocess.run(
+        print(f"[ADB Keyboard] 切换到 ADB Keyboard...")
+        switch_result = subprocess.run(
             adb_prefix + ["shell", "ime", "set", "com.android.adbkeyboard/.AdbIME"],
             capture_output=True,
             text=True,
         )
+        if switch_result.returncode != 0:
+            print(f"[ADB Keyboard] 切换失败：{switch_result.stderr}")
+        else:
+            print(f"[ADB Keyboard] 切换成功")
+    else:
+        print(f"[ADB Keyboard] 已在使用 ADB Keyboard，无需切换")
 
     # 预热键盘以确保其就绪
     input_text_direct("", device_id)
@@ -126,9 +140,14 @@ def restore_keyboard(ime: str, device_id: str | None = None) -> None:
     """
     adb_prefix = _get_adb_prefix(device_id)
 
-    subprocess.run(
+    print(f"[ADB Keyboard] 恢复键盘到：{ime}")
+    result = subprocess.run(
         adb_prefix + ["shell", "ime", "set", ime], capture_output=True, text=True
     )
+    if result.returncode != 0:
+        print(f"[ADB Keyboard] 恢复失败：{result.stderr}")
+    else:
+        print(f"[ADB Keyboard] 恢复成功")
 
 
 def _get_adb_prefix(device_id: str | None) -> list[str]:
