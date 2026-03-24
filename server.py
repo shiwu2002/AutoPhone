@@ -233,6 +233,10 @@ def build_agent_config_from_manager(override: dict = None) -> AgentConfig:
         device_id=config_manager.get("agent", "device_id"),
         lang=config_manager.get("agent", "lang", default="cn"),
         verbose=bool(config_manager.get("agent", "verbose", default=True)),
+        max_context_rounds=config_manager.get("agent", "max_context_rounds", default=5),
+        remember_app_info=config_manager.get("agent", "remember_app_info", default=True),
+        max_repeated_actions=config_manager.get("agent", "max_repeated_actions", default=3),
+        enable_repeat_detection=config_manager.get("agent", "enable_repeat_detection", default=True),
     )
 
 

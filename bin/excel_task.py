@@ -621,6 +621,10 @@ def main():
         max_steps=agent_config_dict.get('max_steps', 50),
         verbose=args.verbose,
         lang=agent_config_dict.get('lang', 'cn'),
+        max_context_rounds=agent_config_dict.get('max_context_rounds', 5),
+        remember_app_info=agent_config_dict.get('remember_app_info', True),
+        max_repeated_actions=agent_config_dict.get('max_repeated_actions', 3),
+        enable_repeat_detection=agent_config_dict.get('enable_repeat_detection', True),
     )
 
     # 确定输出文件

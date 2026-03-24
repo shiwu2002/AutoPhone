@@ -99,10 +99,14 @@ def main():
     # Priority: --verbose > --quiet > config file
     verbose = args.verbose or (not args.quiet)
     agent_config = AgentConfig(
-        max_steps=args.max_steps,
-        device_id=args.device_id,
+        max_steps=args.max_steps or config.get('agent', 'max_steps', 0),
+        device_id=args.device_id or config.get('agent', 'device_id'),
         verbose=verbose,
-        lang=args.lang,
+        lang=args.lang or config.get('agent', 'lang', 'cn'),
+        max_context_rounds=config.get('agent', 'max_context_rounds', 5),
+        remember_app_info=config.get('agent', 'remember_app_info', True),
+        max_repeated_actions=config.get('agent', 'max_repeated_actions', 3),
+        enable_repeat_detection=config.get('agent', 'enable_repeat_detection', True),
     )
 
     # Create and run agent

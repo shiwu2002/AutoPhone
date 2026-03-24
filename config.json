@@ -29,7 +29,11 @@
     "max_steps": 0,
     "device_id": null,
     "verbose": true,
-    "lang": "cn"
+    "lang": "cn",
+    "max_context_rounds": 5,
+    "remember_app_info": true,
+    "max_repeated_actions": 3,
+    "enable_repeat_detection": true
   },
 
   "device": {

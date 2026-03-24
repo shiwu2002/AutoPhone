@@ -83,6 +83,7 @@ class BatchConfig:
     # Agent 相关
     max_steps: int = 50
     verbose: bool = False
+    lang: str = "cn"
 
     # 资源复用
     reuse_agent: bool = True  # 是否复用 Agent 实例
@@ -289,6 +290,11 @@ class BatchQuestionRunner:
                 agent_config=agent_config or AgentConfig(
                     max_steps=self.batch_config.max_steps,
                     verbose=self.batch_config.verbose,
+                    lang=self.batch_config.lang or 'cn',
+                    max_context_rounds=5,
+                    remember_app_info=True,
+                    max_repeated_actions=3,
+                    enable_repeat_detection=True,
                 ),
             )
 
@@ -356,6 +362,11 @@ class BatchQuestionRunner:
                 agent_config=agent_config or AgentConfig(
                     max_steps=self.batch_config.max_steps,
                     verbose=self.batch_config.verbose,
+                    lang=self.batch_config.lang or 'cn',
+                    max_context_rounds=5,
+                    remember_app_info=True,
+                    max_repeated_actions=3,
+                    enable_repeat_detection=True,
                 ),
             )
 
