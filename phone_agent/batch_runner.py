@@ -539,7 +539,8 @@ def run_batch_from_config(
 
     # 创建模型配置
     provider = model_config_dict.get("provider", "local")
-    provider_config = model_config_dict.get(provider, {})
+    # Support both new format (model.providers.{provider}) and old format (model.{provider})
+    provider_config = model_config_dict.get("providers", {}).get(provider, {}) or model_config_dict.get(provider, {})
 
     model_cfg = ModelConfig(
         base_url=provider_config.get("base_url", "http://localhost:11434/v1"),

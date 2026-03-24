@@ -5,7 +5,6 @@
   "model": {
     "_comment": "provider 可选值：local, anthropic, openai",
     "provider": "openai",
-    "use_thinking": false,
     "providers": {
       "local": {
         "base_url": "http://localhost:11434/v1",
@@ -20,7 +19,7 @@
       },
       "openai": {
         "base_url": "https://api-inference.modelscope.cn/v1",
-        "model": "Qwen/Qwen3.5-27B",
+        "model": "ZhipuAI/AutoGLM-Phone-9B",
         "api_key": "ms-fd50204a-9b29-40e0-a29a-1af24569e10f"
       }
     }

@@ -21,7 +21,8 @@ class OpenAIClient:
             self.client = OpenAI(
                 base_url=config.base_url,
                 api_key=config.api_key or "EMPTY",
-                http_client=self.http_client
+                http_client=self.http_client,
+                timeout=60.0,  # 60 秒超时
             )
         except ImportError:
             raise ImportError("openai SDK not installed. Install with: pip install openai")
@@ -183,6 +184,9 @@ class OpenAIClient:
 
     def _parse_response(self, content: str) -> tuple[str, str]:
         """解析响应内容为 thinking 和 action。"""
+        if not content or not content.strip():
+            return "", "finish(message=\"模型返回了空响应，请重试\")"
+
         if "<answer>" in content:
             parts = content.split("<answer>", 1)
             thinking = self._clean_thinking(parts[0])

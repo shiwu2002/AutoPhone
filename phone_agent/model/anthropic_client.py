@@ -21,7 +21,8 @@ class AnthropicClient:
             self.client = Anthropic(
                 api_key=config.api_key,
                 base_url=config.base_url,
-                http_client=self.http_client
+                http_client=self.http_client,
+                timeout=60.0,  # 60 秒超时
             )
             self._use_sdk = True
         except ImportError:
@@ -162,6 +163,9 @@ class AnthropicClient:
 
     def _parse_response(self, content: str) -> tuple[str, str]:
         """解析响应内容为 thinking 和 action。"""
+        if not content or not content.strip():
+            return "", "finish(message=\"模型返回了空响应，请重试\")"
+
         # Rule 1: XML tags
         if "<answer>" in content:
             parts = content.split("<answer>", 1)

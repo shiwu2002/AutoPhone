@@ -7,7 +7,7 @@ from phone_agent.actions.sets.adb_ui import handle_tap, handle_double_tap, handl
 from phone_agent.actions.sets.adb_navigation import handle_back, handle_home, handle_wait
 from phone_agent.actions.sets.app_management import handle_launch
 from phone_agent.actions.sets.input_tools import handle_type
-from phone_agent.actions.sets.file_tools import handle_read_excel, handle_execute_excel_batch
+from phone_agent.actions.sets.file_tools import handle_read_excel, handle_execute_excel_batch, handle_get_excel_question, handle_write_excel_answer
 from phone_agent.actions.sets.system_tools import handle_takeover, handle_interact, handle_note, handle_call_api
 
 # 获取全局注册表并批量注册（向后兼容）
@@ -30,6 +30,8 @@ _registry.register_bulk({
     # File Tools
     "ReadExcel": handle_read_excel,
     "Execute_Excel_Batch": handle_execute_excel_batch,
+    "GetExcelQuestion": handle_get_excel_question,
+    "WriteExcelAnswer": handle_write_excel_answer,
     # System Tools
     "Take_over": handle_takeover,
     "Interact": handle_interact,
@@ -53,6 +55,8 @@ __all__ = [
     "handle_type",
     "handle_read_excel",
     "handle_execute_excel_batch",
+    "handle_get_excel_question",
+    "handle_write_excel_answer",
     "handle_takeover",
     "handle_interact",
     "handle_note",

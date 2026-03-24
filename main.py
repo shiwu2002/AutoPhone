@@ -83,7 +83,8 @@ def main():
     # Create model and agent configurations
     model_config_dict = config.get('model', {})
     provider = model_config_dict.get('provider', 'local')
-    provider_config = model_config_dict.get(provider, {})
+    # Support both new format (model.providers.{provider}) and old format (model.{provider})
+    provider_config = model_config_dict.get('providers', {}).get(provider, {}) or model_config_dict.get(provider, {})
 
     # Use provider-specific config, fallback to CLI args
     model_config = ModelConfig(

@@ -99,9 +99,9 @@ def run_batch_mode(args) -> None:
     model_config_dict = config.get('model', {})
     agent_config_dict = config.get('agent', {})
 
-    # Get provider-specific config
+    # Get provider-specific config - support both new format (model.providers.{provider}) and old format (model.{provider})
     provider = model_config_dict.get('provider', 'local')
-    provider_config = model_config_dict.get(provider, {})
+    provider_config = model_config_dict.get('providers', {}).get(provider, {}) or model_config_dict.get(provider, {})
 
     model_cfg = ModelConfig(
         base_url=args.base_url or provider_config.get('base_url', 'http://localhost:11434/v1'),

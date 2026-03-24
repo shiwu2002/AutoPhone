@@ -83,7 +83,8 @@
       "Bash(python -m py_compile phone_agent/actions/sets/input_tools.py)",
       "Bash(python -c \"from phone_agent.tools.registry import list_tool_sets; ts = list_tool_sets\\(\\); print\\(''\\\\n''.join\\([f\"\"{t[''id'']}: {t[''name'']}\"\" for t in ts]\\)\\)\")",
       "Bash(python -c \"from phone_agent import PhoneAgent; print\\(''PhoneAgent 导入成功''\\)\")",
-      "Bash(ls -la /Volumes/data/python/AutoPhone/*.json)"
+      "Bash(ls -la /Volumes/data/python/AutoPhone/*.json)",
+      "Bash(ls -la /Volumes/data/python/AutoPhone/*.xlsx)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans",

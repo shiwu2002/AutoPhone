@@ -156,7 +156,7 @@ class ToolRegistry:
             id="file_tools",
             name="文件处理工具集",
             description="用于 Excel 文件读取和批量处理",
-            index_prompt="文件、Excel、批量、读取",
+            index_prompt="文件、Excel、批量、读取、写入、答案",
             tools=[
                 ToolMetadata(
                     name="ReadExcel",
@@ -179,6 +179,25 @@ class ToolRegistry:
                         "max_questions": "(可选) 最大问题数，0 表示全部"
                     },
                     example='do(action="Execute_Excel_Batch", file="questions.xlsx", task="请回答：{content}")'
+                ),
+                ToolMetadata(
+                    name="GetExcelQuestion",
+                    description="获取 Excel 中下一道待处理的问题（命令行方式）",
+                    parameters={
+                        "file": "Excel 文件路径",
+                        "row": "(可选) 指定行号，不指定则自动查找待处理的行"
+                    },
+                    example='do(action="GetExcelQuestion", file="questions.xlsx")'
+                ),
+                ToolMetadata(
+                    name="WriteExcelAnswer",
+                    description="将答案写入 Excel 指定行（命令行方式）",
+                    parameters={
+                        "file": "Excel 文件路径",
+                        "row": "行号",
+                        "answer": "答案内容"
+                    },
+                    example='do(action="WriteExcelAnswer", file="questions.xlsx", row=2, answer="这是答案")'
                 ),
             ]
         )

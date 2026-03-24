@@ -42,7 +42,8 @@ app = Flask(__name__, static_folder='templates', static_url_path='')
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_SIZE
 
 # CORS 配置 - 可从配置读取
-config_manager = get_config_manager()
+from pathlib import Path
+config_manager = get_config_manager(Path(__file__).parent / "config.json")
 server_config = config_manager.server
 
 if server_config.enable_cors:

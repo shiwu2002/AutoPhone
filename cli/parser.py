@@ -60,8 +60,8 @@ Examples:
     is_local = model_config.get('type', 'remote') == 'local'
     provider = model_config.get('provider', 'anthropic')
 
-    # Get provider-specific config
-    provider_config = model_config.get(provider, {})
+    # Get provider-specific config - support both new format (model.providers.{provider}) and old format (model.{provider})
+    provider_config = model_config.get('providers', {}).get(provider, {}) or model_config.get(provider, {})
 
     parser.add_argument(
         "--base-url",

@@ -602,10 +602,16 @@ def main():
     model_config_dict = config.get('model', {})
     agent_config_dict = config.get('agent', {})
 
+    # 处理新的配置文件结构（带 providers 嵌套）
+    provider = model_config_dict.get('provider', 'local')
+    providers = model_config_dict.get('providers', {})
+    provider_config = providers.get(provider, {})
+
+    # 优先从 provider_config 读取，如果不存在则直接从 model_config_dict 读取（兼容旧格式）
     model_cfg = ModelConfig(
-        base_url=model_config_dict.get('base_url', 'http://localhost:11434/v1'),
-        model_name=model_config_dict.get('model_name', 'qwen3.5:4b'),
-        api_key=model_config_dict.get('api_key', 'ollama'),
+        base_url=provider_config.get('base_url') or model_config_dict.get('base_url', 'http://localhost:11434/v1'),
+        model_name=provider_config.get('model') or model_config_dict.get('model_name', 'qwen3.5:4b'),
+        api_key=provider_config.get('api_key') or model_config_dict.get('api_key', 'ollama'),
         use_thinking=model_config_dict.get('use_thinking', False),
         lang=agent_config_dict.get('lang', 'cn'),
     )

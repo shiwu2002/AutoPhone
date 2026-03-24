@@ -240,7 +240,8 @@ def _configure_timing_interactive(config: dict):
 def _configure_provider_interactive(config: dict, provider: str) -> dict:
     """Configure provider-specific settings interactively."""
     model_config = config.get('model', {})
-    provider_config = model_config.get(provider, {})
+    # Support both new format (model.providers.{provider}) and old format (model.{provider})
+    provider_config = model_config.get('providers', {}).get(provider, {}) or model_config.get(provider, {})
 
     if provider == 'anthropic':
         print()
