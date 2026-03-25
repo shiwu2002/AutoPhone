@@ -1,0 +1,76 @@
+{
+  "_comment": "PhoneAgent 配置文件 - 用于 Skills 执行手机操作",
+  "_description": "此配置文件专供 Skills 使用，如 liantong_ai_query Skill 调用 PhoneAgent 时使用此配置",
+
+  "model": {
+    "_comment": "provider 可选值：local, openai, anthropic",
+    "provider": "local",
+    "providers": {
+      "local": {
+        "base_url": "http://localhost:11434/v1",
+        "model": "qwen3.5:4b",
+        "api_key": "ollama",
+        "max_tokens": 4096
+      },
+      "openai": {
+        "base_url": "https://api-inference.modelscope.cn/v1",
+        "model": "ZhipuAI/AutoGLM-Phone-9B",
+        "api_key": "",
+        "max_tokens": 2048
+      },
+      "anthropic": {
+        "base_url": "https://api.anthropic.com",
+        "model": "claude-sonnet-4-6-20250514",
+        "api_key": "",
+        "max_tokens": 8192
+      }
+    }
+  },
+
+  "agent": {
+    "max_steps": 20,
+    "lang": "cn",
+    "verbose": true,
+    "max_context_rounds": 3,
+    "remember_app_info": true,
+    "max_repeated_actions": 5,
+    "enable_repeat_detection": true
+  },
+
+  "device": {
+    "type": "adb",
+    "remote_address": null,
+    "auto_connect": true
+  },
+
+  "coordinate_optimization": {
+    "enabled": true,
+    "click_offset_x": 8,
+    "click_offset_y": 8,
+    "use_region_click": true,
+    "min_click_region": 30
+  },
+
+  "timing": {
+    "action": {
+      "keyboard_switch_delay": 1.0,
+      "text_clear_delay": 1.0,
+      "text_input_delay": 1.0,
+      "keyboard_restore_delay": 1.0
+    },
+    "device": {
+      "default_tap_delay": 1.0,
+      "default_double_tap_delay": 1.0,
+      "double_tap_interval": 0.1,
+      "default_long_press_delay": 1.0,
+      "default_swipe_delay": 1.0,
+      "default_back_delay": 1.0,
+      "default_home_delay": 1.0,
+      "default_launch_delay": 1.0
+    },
+    "connection": {
+      "adb_restart_delay": 2.0,
+      "server_restart_delay": 1.0
+    }
+  }
+}

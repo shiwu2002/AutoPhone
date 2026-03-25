@@ -99,28 +99,35 @@ class SettingsPanel(tk.Toplevel):
         self.parent = parent
         self.api_base_url = api_base_url
         self.title("⚙️ 设置")
-        self.geometry("600x500")
+        self.geometry("800x650")
+        self.minsize(600, 500)
         self.transient(parent)
         self.grab_set()
 
         self.setup_ui()
-        self.load_config()
+        # 延迟加载配置，确保 UI 已渲染
+        self.after(100, self.load_config)
 
     def setup_ui(self):
         """设置 UI。"""
         # 标签页
         notebook = ttk.Notebook(self)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # 工作文件夹设置
         work_frame = tk.Frame(notebook, bg='#f5f7fa')
         notebook.add(work_frame, text="📁 工作文件夹")
         self.setup_work_folder(work_frame)
 
-        # 模型设置
+        # 模型设置（MasterAgent）
         model_frame = tk.Frame(notebook, bg='#f5f7fa')
-        notebook.add(model_frame, text="🤖 模型配置")
+        notebook.add(model_frame, text="🤖 MasterAgent 模型")
         self.setup_model(model_frame)
+
+        # Skills 配置
+        skills_frame = tk.Frame(notebook, bg='#f5f7fa')
+        notebook.add(skills_frame, text="🔧 Skills 配置")
+        self.setup_skills(skills_frame)
 
         # 保存按钮
         btn_frame = tk.Frame(self, bg='#f5f7fa')
@@ -135,49 +142,97 @@ class SettingsPanel(tk.Toplevel):
         )
         save_btn.pack(side=tk.RIGHT)
 
+    def create_scrollable_frame(self, parent):
+        """创建可滚动的 Frame。"""
+        # 使用 parent 作为 container，不需要额外创建
+        parent.configure(bg='#f5f7fa')
+
+        # 创建 Canvas 和滚动条
+        canvas = tk.Canvas(parent, bg='#f5f7fa', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+
+        scrollable_frame = tk.Frame(canvas, bg='#f5f7fa')
+
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", tags="scrollable_frame")
+
+        def configure_canvas(event):
+            """Canvas 大小变化时更新内部 Frame 宽度。"""
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        def on_frame_configure(event):
+            """内部 Frame 大小变化时更新滚动区域。"""
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def mouse_wheel(event):
+            """鼠标滚轮事件。"""
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        # 绑定事件
+        canvas.bind("<Configure>", configure_canvas)
+        scrollable_frame.bind("<Configure>", on_frame_configure)
+        canvas.bind("<MouseWheel>", mouse_wheel)
+
+        # 配置滚动条
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # 布局
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        return parent, scrollable_frame, canvas
+
     def setup_work_folder(self, parent):
         """工作文件夹设置。"""
+        # 创建可滚动区域
+        container, scrollable_frame, canvas = self.create_scrollable_frame(parent)
+
         tk.Label(
-            parent, text="工作文件夹路径",
+            scrollable_frame, text="工作文件夹路径",
             font=('Microsoft YaHei', 11, 'bold'),
             bg='#f5f7fa'
-        ).pack(anchor=tk.W, padx=20, pady=15)
+        ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         tk.Label(
-            parent, text="在此文件夹中查找和保存文件",
+            scrollable_frame, text="在此文件夹中查找和保存文件",
             font=('Microsoft YaHei', 9),
             bg='#f5f7fa', fg='#666'
-        ).pack(anchor=tk.W, padx=20)
+        ).pack(anchor=tk.W, padx=20, pady=(0, 10))
 
-        self.work_folder_entry = tk.Entry(parent, font=('Microsoft YaHei', 10), width=50)
-        self.work_folder_entry.pack(fill=tk.X, padx=20, pady=10)
+        self.work_folder_entry = tk.Entry(scrollable_frame, font=('Microsoft YaHei', 10), width=50)
+        self.work_folder_entry.pack(fill=tk.X, padx=20, pady=5)
 
         browse_btn = tk.Button(
-            parent, text="📂 浏览...",
+            scrollable_frame, text="📂 浏览...",
             command=self.browse_folder,
             bg='#667eea', fg='white',
             font=('Microsoft YaHei', 10),
             padx=15, pady=5
         )
-        browse_btn.pack(anchor=tk.W, padx=20)
+        browse_btn.pack(anchor=tk.W, padx=20, pady=10)
+
+        # 占位符，确保滚动区域有足够空间
+        tk.Label(scrollable_frame, text="", bg='#f5f7fa').pack(fill=tk.BOTH, expand=True)
 
     def setup_model(self, parent):
-        """模型设置。"""
+        """模型设置（MasterAgent 用）。"""
+        # 创建可滚动区域
+        container, scrollable_frame, canvas = self.create_scrollable_frame(parent)
+
         # 预设协议选择
         tk.Label(
-            parent, text="模型协议",
+            scrollable_frame, text="模型协议",
             font=('Microsoft YaHei', 11, 'bold'),
             bg='#f5f7fa'
-        ).pack(anchor=tk.W, padx=20, pady=15)
+        ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         tk.Label(
-            parent, text="选择要使用的模型服务协议",
+            scrollable_frame, text="选择要使用的模型服务协议（MasterAgent 聊天用）",
             font=('Microsoft YaHei', 9),
             bg='#f5f7fa', fg='#666'
-        ).pack(anchor=tk.W, padx=20)
+        ).pack(anchor=tk.W, padx=20, pady=(0, 10))
 
         self.protocol_var = tk.StringVar(value="local")
-        protocol_frame = tk.Frame(parent, bg='#f5f7fa')
+        protocol_frame = tk.Frame(scrollable_frame, bg='#f5f7fa')
         protocol_frame.pack(fill=tk.X, padx=20, pady=5)
 
         protocols = [
@@ -196,51 +251,125 @@ class SettingsPanel(tk.Toplevel):
 
         # API Base URL
         tk.Label(
-            parent, text="API Base URL",
+            scrollable_frame, text="API Base URL",
             font=('Microsoft YaHei', 10),
             bg='#f5f7fa'
-        ).pack(anchor=tk.W, padx=20, pady=(20, 5))
+        ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
-        self.base_url_entry = tk.Entry(parent, font=('Microsoft YaHei', 10), width=50)
+        self.base_url_entry = tk.Entry(scrollable_frame, font=('Microsoft YaHei', 10), width=50)
         self.base_url_entry.pack(padx=20, pady=5)
         tk.Label(
-            parent, text="例如：http://localhost:11434/v1 或 https://api.openai.com/v1",
+            scrollable_frame, text="例如：http://localhost:11434/v1 或 https://api.openai.com/v1",
             font=('Microsoft YaHei', 8),
             bg='#f5f7fa', fg='#666'
         ).pack(anchor=tk.W, padx=20)
 
         # Model Name
         tk.Label(
-            parent, text="Model Name",
+            scrollable_frame, text="Model Name",
             font=('Microsoft YaHei', 10),
             bg='#f5f7fa'
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
-        self.model_entry = tk.Entry(parent, font=('Microsoft YaHei', 10), width=50)
+        self.model_entry = tk.Entry(scrollable_frame, font=('Microsoft YaHei', 10), width=50)
         self.model_entry.pack(padx=20, pady=5)
         tk.Label(
-            parent, text="例如：qwen3.5:9b 或 gpt-4o",
+            scrollable_frame, text="例如：qwen3.5:9b 或 gpt-4o",
             font=('Microsoft YaHei', 8),
             bg='#f5f7fa', fg='#666'
         ).pack(anchor=tk.W, padx=20)
 
         # API Key
         tk.Label(
-            parent, text="API Key",
+            scrollable_frame, text="API Key",
             font=('Microsoft YaHei', 10),
             bg='#f5f7fa'
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
-        self.api_key_entry = tk.Entry(parent, font=('Microsoft YaHei', 10), width=50, show='*')
+        self.api_key_entry = tk.Entry(scrollable_frame, font=('Microsoft YaHei', 10), width=50, show='*')
         self.api_key_entry.pack(padx=20, pady=5)
 
         # 说明标签
         self.protocol_hint = tk.Label(
-            parent, text="",
+            scrollable_frame, text="",
             font=('Microsoft YaHei', 9),
             bg='#f5f7fa', fg='#ff9800'
         )
         self.protocol_hint.pack(anchor=tk.W, padx=20, pady=10)
+
+        # 占位符
+        tk.Label(scrollable_frame, text="", bg='#f5f7fa').pack(fill=tk.BOTH, expand=True)
+
+    def setup_skills(self, parent):
+        """Skills 配置（PhoneAgent 用）。"""
+        # 创建可滚动区域
+        container, scrollable_frame, canvas = self.create_scrollable_frame(parent)
+
+        # 已注册 Skills 列表
+        skills_list_frame = tk.LabelFrame(
+            scrollable_frame, text="🔌 已注册的 Skills",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        skills_list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        self.skills_list_text = scrolledtext.ScrolledText(
+            skills_list_frame,
+            height=10,
+            font=('Consolas', 9),
+            wrap=tk.WORD,
+            bg='#f9f9f9'
+        )
+        self.skills_list_text.pack(fill=tk.BOTH, expand=True)
+        self.skills_list_text.config(state=tk.DISABLED)
+
+        # 帮助说明和配置文件
+        help_frame = tk.LabelFrame(
+            scrollable_frame, text="💡 PhoneAgent 配置",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        help_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        help_text = """• Skills（如联通客服问答）使用独立的 PhoneAgent 配置
+• 配置文件：phone_agent_config.json
+• 与 MasterAgent 的模型配置相互独立
+• 修改后需要重启服务器生效"""
+
+        tk.Label(
+            help_frame, text=help_text,
+            font=('Microsoft YaHei', 9),
+            bg='white', fg='#333',
+            justify=tk.LEFT
+        ).pack(anchor=tk.W)
+
+        # 按钮区域
+        btn_frame = tk.Frame(help_frame, bg='white')
+        btn_frame.pack(fill=tk.X, padx=0, pady=(10, 0))
+
+        open_btn = tk.Button(
+            btn_frame, text="📄 打开 phone_agent_config.json",
+            command=self.open_phone_agent_config,
+            bg='#667eea', fg='white',
+            font=('Microsoft YaHei', 10),
+            padx=15, pady=5
+        )
+        open_btn.pack(side=tk.LEFT)
+
+        # 刷新按钮
+        refresh_btn = tk.Button(
+            btn_frame, text="🔄 刷新 Skills 列表",
+            command=self.load_skills_list,
+            bg='#4caf50', fg='white',
+            font=('Microsoft YaHei', 10),
+            padx=15, pady=5
+        )
+        refresh_btn.pack(side=tk.RIGHT, padx=(10, 0))
+
+        # 占位符
+        tk.Label(scrollable_frame, text="", bg='#f5f7fa').pack(fill=tk.BOTH, expand=True)
 
     def on_protocol_change(self):
         """协议切换时更新提示和默认值。"""
@@ -280,6 +409,20 @@ class SettingsPanel(tk.Toplevel):
             self.work_folder_entry.delete(0, tk.END)
             self.work_folder_entry.insert(0, folder)
 
+    def open_phone_agent_config(self):
+        """打开 PhoneAgent 配置文件。"""
+        config_path = Path(__file__).parent.parent / "phone_agent_config.json"
+        if config_path.exists():
+            import os
+            if os.name == 'nt':
+                os.startfile(config_path)
+            elif sys.platform == 'darwin':
+                os.system(f'open "{config_path}"')
+            else:
+                os.system(f'xdg-open "{config_path}"')
+        else:
+            messagebox.showwarning("提示", "配置文件不存在，将使用默认配置")
+
     def load_config(self):
         """加载配置。"""
         if CONFIG_PATH.exists():
@@ -302,6 +445,72 @@ class SettingsPanel(tk.Toplevel):
                 self.api_key_entry.insert(0, provider_config.get('api_key', ''))
 
             self.on_protocol_change()
+
+        # 加载 Skills 配置预览
+        self.load_skills_preview()
+
+    def load_skills_preview(self):
+        """加载 Skills 配置预览（已移除，仅保留 Skills 列表）。"""
+        # 加载已注册 Skills 列表
+        self.load_skills_list()
+
+    def load_skills_list(self):
+        """加载已注册 Skills 列表。"""
+        try:
+            response = requests.get(f"{API_BASE_URL}/skills", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    skills = data.get('skills', [])
+                    output = []
+                    output.append(f"已注册 {len(skills)} 个 Skills:\n")
+                    output.append("=" * 60 + "\n\n")
+
+                    for skill in skills:
+                        skill_id = skill.get('skill_id', skill.get('id', 'unknown'))
+                        name = skill.get('name', 'Unknown')
+                        desc = skill.get('description', 'No description')
+                        enabled = skill.get('enabled', True)
+                        status = "✅" if enabled else "⏸️"
+
+                        output.append(f"{status} {skill_id}\n")
+                        output.append(f"   名称：{name}\n")
+                        output.append(f"   描述：{desc}\n")
+
+                        # 显示参数
+                        params = skill.get('parameters', [])
+                        if params:
+                            output.append("   参数:\n")
+                            for param in params:
+                                if isinstance(param, dict):
+                                    pname = param.get('name', '')
+                                    ptype = param.get('type', '')
+                                    preq = '必填' if param.get('required') else '可选'
+                                    output.append(f"      - {pname} ({ptype}, {preq})\n")
+                                else:
+                                    output.append(f"      - {param}\n")
+
+                        output.append("\n" + "-" * 60 + "\n\n")
+
+                    self.skills_list_text.config(state=tk.NORMAL)
+                    self.skills_list_text.delete('1.0', tk.END)
+                    self.skills_list_text.insert('1.0', ''.join(output))
+                    self.skills_list_text.config(state=tk.DISABLED)
+                else:
+                    self.skills_list_text.config(state=tk.NORMAL)
+                    self.skills_list_text.delete('1.0', tk.END)
+                    self.skills_list_text.insert('1.0', f"❌ 获取 Skills 失败：{data.get('error', 'Unknown error')}")
+                    self.skills_list_text.config(state=tk.DISABLED)
+            else:
+                self.skills_list_text.config(state=tk.NORMAL)
+                self.skills_list_text.delete('1.0', tk.END)
+                self.skills_list_text.insert('1.0', f"❌ HTTP 错误：{response.status_code}")
+                self.skills_list_text.config(state=tk.DISABLED)
+        except Exception as e:
+            self.skills_list_text.config(state=tk.NORMAL)
+            self.skills_list_text.delete('1.0', tk.END)
+            self.skills_list_text.insert('1.0', f"❌ 加载失败：{e}\n\n请确保服务器正在运行")
+            self.skills_list_text.config(state=tk.DISABLED)
 
     def save_config(self):
         """保存配置。"""
@@ -330,7 +539,7 @@ class SettingsPanel(tk.Toplevel):
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-        messagebox.showinfo("✅ 保存成功", "配置已保存到 config.json")
+        messagebox.showinfo("✅ 保存成功", "配置已保存到 config.json\n\nSkills 配置请在 phone_agent_config.json 中修改")
         self.parent.load_config()
         self.destroy()
 
