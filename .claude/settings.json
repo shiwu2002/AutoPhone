@@ -95,7 +95,20 @@
       "Bash(python -m py_compile /Volumes/data/python/AutoPhone/server.py)",
       "Bash(python -m py_compile /Volumes/data/python/AutoPhone/gui_app.py)",
       "Bash(python -m py_compile /Volumes/data/python/AutoPhone/start.py)",
-      "Bash(ls -la /Volumes/data/python/AutoPhone/*.py)"
+      "Bash(ls -la /Volumes/data/python/AutoPhone/*.py)",
+      "Bash(python -c \"from mainAgent import MasterAgent; print\\(''Import OK''\\)\")",
+      "Bash(python mainAgent/main.py --list-skills)",
+      "Bash(python main.py --list-skills)",
+      "Bash(python main.py -s get_excel_question --skill-args '{\"\"\"\"file\"\"\"\":\"\"\"\"test.xlsx\"\"\"\"}')",
+      "Bash(python main.py -t \"打开微信给朋友发消息\")",
+      "Bash(python -m mainAgent.main -s liantong_ai_query --skill-args '{\"\"\"\"question\"\"\"\":\"\"\"\"测试\"\"\"\"}')",
+      "Bash(python -c \"from phone_agent.logger import get_logger, log_agent_action, log_tool_call, log_skill_call; logger = get_logger\\(''test''\\); logger.info\\(''Test log message''\\); log_agent_action\\(''test_action'', param=''value''\\); log_tool_call\\(''TestTool'', result=''success''\\); log_skill_call\\(''test_skill'', result={''data'': ''test''}\\); print\\(''Logger test completed''\\)\")",
+      "Bash(python -c \"from phone_agent.logger import get_logger; logger = get_logger\\(''test''\\); logger.info\\(''Test log message''\\); print\\(''Logger import test passed''\\)\")",
+      "Bash(find e:/Python/AutoPhone -name *.log -type f)",
+      "Bash(curl http://localhost:5001/health)",
+      "Bash(python gui_app.py)",
+      "Bash(python -c \"from mainAgent.agent import MasterAgent; print\\(''MasterAgent import OK''\\)\")",
+      "Bash(curl http://localhost:5001/skills)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans",

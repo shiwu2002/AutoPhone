@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HTTP 服务器接口 - 安全增强版
+HTTP 服务器接口 - 对接 MasterAgent（主智能体）
 """
 
 import os
@@ -9,15 +9,18 @@ import tempfile
 import shutil
 from pathlib import Path
 from functools import wraps
-from flask import Flask, request, jsonify, g
+from typing import Optional
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 
-from phone_agent import PhoneAgent
-from phone_agent.agent import AgentConfig
+from mainAgent.agent import MasterAgent, MasterAgentConfig
+from mainAgent.skills import list_skills, get_skill_info
+from mainAgent.skill_config import get_manager as get_skill_config_manager
+from mainAgent.skill_template import create_skill, validate_skill, get_examples
+from phone_agent.utils.logger import setup_logger
 from phone_agent.history import get_history_manager
-from phone_agent.model import ModelConfig
-from phone_agent.device_factory import get_device_factory
-from phone_agent.config.manager import get_config_manager
+
+logger = setup_logger(__name__)
 
 # ============== 安全配置 ==============
 
@@ -37,38 +40,28 @@ CONFIG_PATH = Path(__file__).parent / "config.json"
 # ============== Flask 应用初始化 ==============
 
 app = Flask(__name__)
-
-# 配置最大上传大小
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_SIZE
 
-# CORS 配置 - 可从配置读取
-from pathlib import Path
-config_manager = get_config_manager(Path(__file__).parent / "config.json")
-server_config = config_manager.server
+# CORS 配置
+app.config['CORS_ENABLED'] = True
+CORS(app)
 
-if server_config.enable_cors:
-    CORS(app)
+# ============== 认证配置 ==============
 
+AUTH_ENABLED = False
+AUTH_TOKEN = os.environ.get('AUTOPHONE_SERVER_TOKEN', 'admin')
 
-# ============== 认证中间件 ==============
 
 def check_auth():
     """检查请求是否通过认证。"""
-    if not server_config.auth_enabled:
+    if not AUTH_ENABLED:
         return True
-
-    # 从 Header 获取 token
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         token = auth_header[7:]
     else:
         token = auth_header
-
-    # 优先使用环境变量 token，其次使用配置文件
-    env_token = os.environ.get('AUTOPHONE_SERVER_TOKEN')
-    valid_token = env_token or server_config.auth_token
-
-    return token == valid_token if valid_token else False
+    return token == AUTH_TOKEN
 
 
 def require_auth(f):
@@ -99,10 +92,8 @@ def cleanup_old_files(max_age_hours: int = 24) -> int:
     import time
     current_time = time.time()
     cleaned = 0
-
     if not UPLOAD_DIR.exists():
         return 0
-
     for file_path in UPLOAD_DIR.iterdir():
         if file_path.is_file():
             file_age = current_time - file_path.stat().st_mtime
@@ -112,142 +103,68 @@ def cleanup_old_files(max_age_hours: int = 24) -> int:
                     cleaned += 1
                 except OSError:
                     pass
-
     return cleaned
 
 
 # ============== 路由处理器 ==============
 
+# 全局 MasterAgent 实例
+_agent_instance: Optional[MasterAgent] = None
+
+
+def get_agent() -> MasterAgent:
+    """获取全局 MasterAgent 实例。"""
+    global _agent_instance
+    if _agent_instance is None:
+        _agent_instance = MasterAgent()
+    return _agent_instance
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
-    """健康检查端点（无需认证）。"""
+    """健康检查端点。"""
     return jsonify({'status': 'healthy', 'message': 'Server is running'})
 
 
-@app.route('/devices', methods=['GET'])
-@require_auth
-def get_devices():
-    """获取已连接的设备列表。"""
+@app.route('/chat', methods=['POST'])
+def chat():
+    """与 MasterAgent 聊天。"""
     try:
-        devices = get_device_factory().list_devices()
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+        data = request.get_json()
+
+        message = data.get('message', '')
+        file_path = data.get('file', '')
+
+        if not message:
+            return jsonify({'success': False, 'error': 'Missing required field: message'}), 400
+
+        # 获取 Agent 实例
+        agent = get_agent()
+
+        # 如果有文件，更新工作文件
+        if file_path:
+            agent._working_files.append(file_path)
+
+        # 聊天
+        reply = agent.chat(message)
+
         return jsonify({
             'success': True,
-            'count': len(devices),
-            'devices': [
-                {
-                    'device_id': d.device_id,
-                    'status': d.status,
-                    'connection_type': d.connection_type.value,
-                    'model': d.model or 'Unknown'
-                }
-                for d in devices
-            ]
+            'reply': reply,
+            'status': agent.get_status()
         })
+
     except Exception as e:
+        logger.error(f"Chat failed: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/devices/connect', methods=['POST'])
-@require_auth
-def connect_device():
-    """连接到远程设备。"""
-    try:
-        if not request.is_json:
-            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
-        address = request.get_json().get('address', '')
-        if not address:
-            return jsonify({'success': False, 'error': 'Missing device address'}), 400
-
-        # 验证地址格式
-        if ':' not in address and '.' not in address:
-            return jsonify({'success': False, 'error': 'Invalid address format'}), 400
-
-        from phone_agent.adb.connection import ADBConnection
-        conn = ADBConnection()
-        success, message = conn.connect(address)
-        return jsonify({'success': success, 'message': message})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/devices/disconnect', methods=['POST'])
-@require_auth
-def disconnect_device():
-    """断开远程设备。"""
-    try:
-        if not request.is_json:
-            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
-        address = request.get_json().get('address', 'all')
-        from phone_agent.adb.connection import ADBConnection
-        conn = ADBConnection()
-        success, message = conn.disconnect(address if address != 'all' else None)
-        return jsonify({'success': success, 'message': message})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/devices/refresh', methods=['POST'])
-@require_auth
-def refresh_devices():
-    """刷新设备列表。"""
-    try:
-        return get_devices()
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-def build_model_config_from_manager(override: dict = None) -> ModelConfig:
-    """使用 ConfigManager 构建模型配置。"""
-    creds = config_manager.get_model_credentials()
-    provider = config_manager.get("model", "provider", default="local")
-
-    if override:
-        if "base_url" in override:
-            creds["base_url"] = override["base_url"]
-        if "model" in override:
-            creds["model"] = override["model"]
-        if "api_key" in override:
-            creds["api_key"] = override["api_key"]
-
-    return ModelConfig(
-        base_url=creds["base_url"],
-        model_name=creds["model"],
-        api_key=creds["api_key"] or "EMPTY",
-        use_thinking=config_manager.get("model", "use_thinking", default=False),
-        lang=config_manager.get("agent", "lang", default="cn"),
-        provider=provider,
-    )
-
-
-def build_agent_config_from_manager(override: dict = None) -> AgentConfig:
-    """使用 ConfigManager 构建 Agent 配置。"""
-    return AgentConfig(
-        max_steps=int(config_manager.get("agent", "max_steps", default=0)),
-        device_id=config_manager.get("agent", "device_id"),
-        lang=config_manager.get("agent", "lang", default="cn"),
-        verbose=bool(config_manager.get("agent", "verbose", default=True)),
-        max_context_rounds=config_manager.get("agent", "max_context_rounds", default=5),
-        remember_app_info=config_manager.get("agent", "remember_app_info", default=True),
-        max_repeated_actions=config_manager.get("agent", "max_repeated_actions", default=3),
-        enable_repeat_detection=config_manager.get("agent", "enable_repeat_detection", default=True),
-    )
-
-
-def check_device_available() -> tuple[bool, str]:
-    """检查是否有可用设备。"""
-    try:
-        devices = get_device_factory().list_devices()
-        if not devices:
-            return False, '没有可用的设备，请先连接 ADB 设备（USB 或无线），刷新页面后重试'
-        return True, ''
-    except Exception as e:
-        return False, f'检查设备失败：{str(e)}'
 
 
 @app.route('/execute', methods=['POST'])
 @require_auth
 def execute_task():
-    """执行任务（高级版，可覆盖配置）。"""
+    """执行任务（使用 MasterAgent）。"""
     try:
         if not request.is_json:
             return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
@@ -255,92 +172,17 @@ def execute_task():
         if not data or 'task' not in data:
             return jsonify({'success': False, 'error': 'Missing required field: task'}), 400
 
-        model_config = build_model_config_from_manager(data.get('model'))
-        agent_config = build_agent_config_from_manager(data.get('agent'))
-
-        success, error = check_device_available()
-        if not success:
-            return jsonify({'success': False, 'error': error}), 400
-
-        agent = PhoneAgent(model_config=model_config, agent_config=agent_config)
-        result = agent.run(data['task'])
+        # 创建 MasterAgent 并执行任务
+        agent = MasterAgent()
+        result = agent.execute_task(data['task'])
 
         return jsonify({
             'success': True,
             'result': result,
-            'steps': agent.step_count,
             'message': 'Task executed successfully'
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/run', methods=['POST'])
-@require_auth
-def run_simple():
-    """执行任务（简化版，使用 config.json 配置）。"""
-    try:
-        if not request.is_json:
-            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
-        data = request.get_json()
-        if not data or 'task' not in data:
-            return jsonify({'success': False, 'error': 'Missing required field: task'}), 400
-
-        model_config = build_model_config_from_manager()
-        agent_config = build_agent_config_from_manager()
-
-        success, error = check_device_available()
-        if not success:
-            return jsonify({'success': False, 'error': error}), 400
-
-        agent = PhoneAgent(model_config=model_config, agent_config=agent_config)
-        result = agent.run(data['task'])
-
-        return jsonify({
-            'success': True,
-            'result': result,
-            'steps': agent.step_count
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/config', methods=['GET'])
-@require_auth
-def get_config():
-    """获取当前配置（不包含敏感信息）。"""
-    config = config_manager._raw_config.copy()
-
-    # 隐藏敏感信息
-    if 'model' in config and 'providers' in config['model']:
-        for provider in config['model']['providers'].values():
-            if 'api_key' in provider and provider['api_key']:
-                provider['api_key'] = '***hidden***'
-
-    return jsonify(config)
-
-
-@app.route('/config', methods=['POST'])
-@require_auth
-def update_config():
-    """更新配置文件（不允许通过 API 更新敏感信息）。"""
-    try:
-        if not request.is_json:
-            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
-
-        new_config = request.get_json()
-
-        # 不允许通过 API 设置敏感信息
-        if 'model' in new_config and 'providers' in new_config['model']:
-            for provider in new_config['model']['providers'].values():
-                if 'api_key' in provider:
-                    del provider['api_key']
-
-        config_manager._raw_config.update(new_config)
-        config_manager.save()
-
-        return jsonify({'success': True, 'message': 'Configuration updated (sensitive fields excluded)'})
-    except Exception as e:
+        logger.error(f"Task execution failed: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -350,34 +192,13 @@ def get_history():
     """获取任务历史记录。"""
     try:
         limit = request.args.get('limit', 100, type=int)
-        success_filter = request.args.get('success', type=str)
         history_mgr = get_history_manager()
-
-        if success_filter == 'true':
-            records = history_mgr.get_successful_records(limit=limit)
-        elif success_filter == 'false':
-            records = history_mgr.get_failed_records(limit=limit)
-        else:
-            records = history_mgr.get_all_records(limit=limit)
-
+        records = history_mgr.get_all_records(limit=limit)
         return jsonify({
             'success': True,
             'count': len(records),
             'records': [record.to_dict() for record in records]
         })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/history/clear', methods=['POST'])
-@require_auth
-def clear_history():
-    """清空所有历史记录。"""
-    try:
-        history_mgr = get_history_manager()
-        if history_mgr.clear_all():
-            return jsonify({'success': True, 'message': '所有历史记录已清空'})
-        return jsonify({'success': False, 'error': '清空历史记录失败'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -393,23 +214,15 @@ def get_history_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/history/search', methods=['GET'])
+@app.route('/history/clear', methods=['POST'])
 @require_auth
-def search_history():
-    """搜索历史记录。"""
+def clear_history():
+    """清空所有历史记录。"""
     try:
-        keyword = request.args.get('keyword', '')
-        limit = request.args.get('limit', 50, type=int)
-        if not keyword:
-            return jsonify({'success': False, 'error': 'Missing required parameter: keyword'}), 400
-
         history_mgr = get_history_manager()
-        records = history_mgr.search_records(keyword, limit=limit)
-        return jsonify({
-            'success': True,
-            'count': len(records),
-            'records': [record.to_dict() for record in records]
-        })
+        if history_mgr.clear_all():
+            return jsonify({'success': True, 'message': '所有历史记录已清空'})
+        return jsonify({'success': False, 'error': '清空历史记录失败'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -428,30 +241,21 @@ except ImportError:
 def upload_file():
     """上传文件端点，支持拖放上传 Excel/TXT 文件。"""
     try:
-        # 清理旧文件
         cleanup_old_files()
-
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': '没有文件上传'}), 400
-
         file = request.files['file']
         if file.filename == '':
             return jsonify({'success': False, 'error': '文件名为空'}), 400
-
         if not allowed_file(file.filename):
             ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'unknown'
             return jsonify({
                 'success': False,
                 'error': f'不支持的文件格式：.{ext}，请上传 {", ".join(ALLOWED_EXTENSIONS)} 文件'
             }), 400
-
-        # 生成安全文件名
         safe_filename = generate_safe_filename(file.filename)
         file_path = UPLOAD_DIR / safe_filename
-
-        # 保存文件
         file.save(str(file_path))
-
         return jsonify({
             'success': True,
             'file_path': str(file_path),
@@ -465,7 +269,7 @@ def upload_file():
 @app.route('/excel/batch', methods=['POST'])
 @require_auth
 def excel_batch_task():
-    """Excel 批量任务执行端点。"""
+    """Excel 批量任务执行端点（使用 MasterAgent）。"""
     try:
         if not request.is_json:
             return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
@@ -473,32 +277,15 @@ def excel_batch_task():
         if not data or 'file' not in data or 'task' not in data:
             return jsonify({'success': False, 'error': 'Missing required fields: file or task'}), 400
 
-        model_cfg = build_model_config_from_manager()
-        agent_cfg = build_agent_config_from_manager()
+        # 创建 MasterAgent 并执行 Excel 批量任务
+        agent = MasterAgent()
+        task_desc = f'处理 {data["file"]} 中的所有问题，任务模板：{data["task"]}'
+        result = agent.execute_task(task_desc)
 
-        output_file = data.get('output') or data['file']
-
-        from bin.excel_task import process_excel_questions
-        results = process_excel_questions(
-            excel_path=data['file'],
-            task_template=data['task'],
-            output_path=output_file,
-            model_cfg=model_cfg,
-            agent_cfg=agent_cfg,
-            embed_screenshot=data.get('embed_screenshot', False),
-            column=data.get('column')
-        )
-
-        success_count = sum(1 for r in results if r.get('success', False))
         return jsonify({
             'success': True,
-            'results': results,
-            'output_file': output_file,
-            'statistics': {
-                'total': len(results),
-                'success': success_count,
-                'failed': len(results) - success_count
-            }
+            'result': result,
+            'output_file': data.get('file'),
         })
     except Exception as e:
         import traceback
@@ -516,17 +303,13 @@ def excel_preview():
         data = request.get_json()
         if not data or 'file' not in data:
             return jsonify({'success': False, 'error': 'Missing required field: file'}), 400
-
         if not PANDAS_AVAILABLE:
             return jsonify({'success': False, 'error': 'pandas not installed'}), 400
-
         path = Path(data['file'])
         if not path.exists():
             return jsonify({'success': False, 'error': f'File not found: {data["file"]}'}), 400
-
         df = pd.read_excel(path)
         columns = df.columns.tolist()
-
         question_col = data.get('column')
         if not question_col:
             for col in columns:
@@ -535,10 +318,8 @@ def excel_preview():
                     break
             if not question_col:
                 question_col = columns[0]
-
         questions = df[question_col].dropna().astype(str).tolist()
         questions = [q.strip() for q in questions if q.strip() and q != 'nan']
-
         return jsonify({
             'success': True,
             'columns': columns,
@@ -550,32 +331,165 @@ def excel_preview():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ============== 文件下载 ==============
-
 @app.route('/download', methods=['GET'])
 @require_auth
 def download_file():
-    """下载文件端点，支持批量任务结果文件下载。"""
+    """下载文件端点。"""
     try:
         file_path = request.args.get('file', '')
         if not file_path:
             return jsonify({'success': False, 'error': '缺少文件路径参数'}), 400
-
         path = Path(file_path)
         if not path.exists():
             return jsonify({'success': False, 'error': '文件不存在'}), 404
-
         if not path.is_file():
             return jsonify({'success': False, 'error': '不是有效文件'}), 400
-
-        # 发送文件
-        from flask import send_file
         return send_file(
             path,
             as_attachment=True,
             download_name=path.name,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if path.suffix == '.xlsx' else 'application/octet-stream'
         )
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============== Skills 管理 ==============
+
+@app.route('/skills', methods=['GET'])
+@require_auth
+def list_all_skills():
+    """列出所有 Skills。"""
+    try:
+        skills = list_skills()
+        return jsonify({'success': True, 'skills': skills})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/<skill_id>', methods=['GET'])
+@require_auth
+def get_skill_detail(skill_id: str):
+    """获取 Skill 详细信息。"""
+    try:
+        info = get_skill_info(skill_id)
+        if info:
+            return jsonify({'success': True, 'skill': info})
+        return jsonify({'success': False, 'error': f'Skill not found: {skill_id}'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/<skill_id>/config', methods=['POST'])
+@require_auth
+def update_skill_config(skill_id: str):
+    """更新 Skill 配置。"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+        data = request.get_json()
+
+        manager = get_skill_config_manager()
+        if manager.update_user_config(skill_id, data):
+            return jsonify({'success': True, 'message': '配置已更新'})
+        return jsonify({'success': False, 'error': '更新失败，Skill 可能不存在或配置验证失败'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/<skill_id>/toggle', methods=['POST'])
+@require_auth
+def toggle_skill(skill_id: str):
+    """启用/禁用 Skill。"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+        data = request.get_json()
+        enabled = data.get('enabled', True)
+
+        manager = get_skill_config_manager()
+        if enabled:
+            success = manager.enable_skill(skill_id)
+        else:
+            success = manager.disable_skill(skill_id)
+
+        if success:
+            return jsonify({'success': True, 'message': f'Skill 已{"启用" if enabled else "禁用"}'})
+        return jsonify({'success': False, 'error': '操作失败'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============== Skill 模板和创建 ==============
+
+@app.route('/skills/templates', methods=['GET'])
+@require_auth
+def get_skill_templates():
+    """获取 Skill 模板示例。"""
+    try:
+        examples = get_examples()
+        return jsonify({'success': True, 'templates': examples})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/create', methods=['POST'])
+@require_auth
+def create_new_skill():
+    """创建新的 Skill。"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+        data = request.get_json()
+
+        # 必填字段
+        required_fields = ['skill_id', 'name', 'description', 'purpose', 'parameters']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'success': False, 'error': f'缺少必填字段：{field}'}), 400
+
+        # 验证 skill_id 格式
+        skill_id = data['skill_id']
+        if not skill_id.replace('_', '').isalnum():
+            return jsonify({'success': False, 'error': 'skill_id 只能包含字母、数字和下划线'}), 400
+
+        # 创建 Skill
+        result = create_skill(
+            skill_id=skill_id,
+            skill_name=data['name'],
+            skill_description=data['description'],
+            skill_purpose=data['purpose'],
+            parameters=data['parameters'],
+            config_schema=data.get('config_schema'),
+            user_config=data.get('user_config'),
+        )
+
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': result.get('message'),
+                'skill_id': skill_id,
+                'skill_dir': result.get('skill_dir'),
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': result.get('error')}), 400
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/<skill_id>/validate', methods=['GET'])
+@require_auth
+def validate_skill_endpoint(skill_id: str):
+    """验证 Skill 是否有效。"""
+    try:
+        result = validate_skill(skill_id)
+        return jsonify({
+            'success': True,
+            'valid': result.get('valid', False),
+            'errors': result.get('errors', []),
+            'warnings': result.get('warnings', [])
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -603,40 +517,34 @@ if __name__ == '__main__':
     from pathlib import Path
 
     print("=" * 50)
-    print("Phone Agent HTTP Server (安全增强版)")
+    print("Phone Agent HTTP Server (对接 MasterAgent)")
     print("=" * 50)
-    print(f"Starting server on http://{server_config.host}:{server_config.port}")
 
-    if server_config.auth_enabled:
-        print("⚠️  认证已启用，请使用 Authorization header 发送请求")
-    else:
-        print("⚠️  认证未启用，生产环境建议开启")
+    host = os.environ.get('AUTOPHONE_HOST', 'localhost')
+    port = int(os.environ.get('AUTOPHONE_PORT', 5001))
 
+    print(f"Starting server on http://{host}:{port}")
     print("\nAvailable endpoints:")
     print("  GET  /health           - Health check")
-    print("  POST /run              - Simple task execution")
-    print("  POST /execute          - Advanced task execution")
-    print("  POST /upload           - File upload (max 100MB, auto-cleanup)")
+    print("  POST /execute          - Execute task (MasterAgent)")
+    print("  POST /upload           - File upload")
     print("  POST /excel/batch      - Excel batch execution")
     print("  POST /excel/preview    - Preview Excel content")
-    print("  GET  /download         - Download file (for batch results)")
-    print("  GET  /config           - Get configuration")
-    print("  POST /config           - Update configuration")
+    print("  GET  /download         - Download file")
     print("  GET  /history          - Get task history")
     print("  GET  /history/stats    - Get statistics")
-    print("  GET  /history/search   - Search history")
+    print("  POST /history/clear    - Clear history")
     print("=" * 50)
 
-    # 启动服务器（在后台线程中运行，以便主线程可以启动 GUI）
+    # 启动服务器
     import threading
 
     def run_server():
-        app.run(host=server_config.host, port=server_config.port, debug=False, use_reloader=False)
+        app.run(host=host, port=port, debug=False, use_reloader=False)
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # 等待服务器启动
     time.sleep(2)
 
     # 启动 GUI 界面

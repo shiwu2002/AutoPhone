@@ -1,0 +1,102 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-25T00:00:00",
+  "skills": [
+    {
+      "skill_id": "liantong_ai_query",
+      "name": "联通 AI 客服问答",
+      "description": "向中国联通 AI 客服提问并获取回复",
+      "module_path": "skills.liantong_ai_query.skill",
+      "execute_function": "execute",
+      "version": "1.0.0",
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "question",
+          "type": "str",
+          "description": "要提问的问题内容",
+          "required": true,
+          "default": null
+        },
+        {
+          "name": "app_name",
+          "type": "str",
+          "description": "应用名称",
+          "required": false,
+          "default": "中国联通"
+        }
+      ],
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "app_name": {
+            "type": "string",
+            "description": "默认应用名称"
+          }
+        }
+      },
+      "user_config": {
+        "app_name": "中国联通"
+      },
+      "created_at": "2026-03-25T00:00:00",
+      "updated_at": "2026-03-25T00:00:00"
+    },
+    {
+      "skill_id": "excel_tools",
+      "name": "Excel 工具",
+      "description": "从 Excel 读取问题和写入答案",
+      "module_path": "skills.excel_tools.skill",
+      "execute_function": "get_excel_question",
+      "version": "1.0.0",
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "file",
+          "type": "str",
+          "description": "Excel 文件路径",
+          "required": true
+        },
+        {
+          "name": "row",
+          "type": "int",
+          "description": "行号",
+          "required": false,
+          "default": null
+        },
+        {
+          "name": "question_column",
+          "type": "str",
+          "description": "问题列名",
+          "required": false,
+          "default": "问题"
+        },
+        {
+          "name": "answer_column",
+          "type": "str",
+          "description": "答案列名",
+          "required": false,
+          "default": "答案"
+        }
+      ],
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "question_column": {
+            "type": "string",
+            "default": "问题"
+          },
+          "answer_column": {
+            "type": "string",
+            "default": "答案"
+          }
+        }
+      },
+      "user_config": {
+        "question_column": "问题",
+        "answer_column": "答案"
+      },
+      "created_at": "2026-03-25T00:00:00",
+      "updated_at": "2026-03-25T00:00:00"
+    }
+  ]
+}

@@ -16,6 +16,7 @@ from phone_agent.history import get_history_manager
 from phone_agent.model import ModelClient, ModelConfig
 from phone_agent.model.client import MessageBuilder
 from phone_agent.utils.logger import setup_logger
+from phone_agent.hooks import trigger_hook
 
 # 初始化 logger
 logger = setup_logger(__name__)
@@ -32,8 +33,6 @@ class AgentConfig:
     verbose: bool = True
     max_context_rounds: int = 5  # 保留最近 N 轮对话
     remember_app_info: bool = True  # 是否在跨步骤中记住应用信息
-    max_repeated_actions: int = 3  # 最大连续重复动作次数，0 表示不限制
-    enable_repeat_detection: bool = True  # 是否启用重复动作检测
 
     def __post_init__(self):
         if self.system_prompt is None:
@@ -96,7 +95,6 @@ class PhoneAgent:
         self._step_count = 0
         self._app_history: list[str] = []  # 记录应用切换历史
         self._last_screen_info: str | None = None  # 缓存上一步的屏幕信息
-        self._recent_actions: list[dict[str, Any]] = []  # 记录最近的动作，用于检测重复
 
     def run(self, task: str) -> str:
         """
@@ -110,7 +108,10 @@ class PhoneAgent:
         """
         self._context = []
         self._step_count = 0
-        
+
+        # 触发任务开始钩子
+        trigger_hook("on_task_start", task=task)
+
         # 记录开始时间
         start_time = datetime.now()
 
@@ -120,6 +121,8 @@ class PhoneAgent:
         if result.finished:
             end_time = datetime.now()
             self._save_history(task, result, start_time, end_time)
+            # 触发任务结束钩子
+            trigger_hook("on_task_end", task=task, result=result.message or "Task completed")
             return result.message or "Task completed"
 
         # Continue until finished or max steps reached
@@ -130,6 +133,8 @@ class PhoneAgent:
             if result.finished:
                 end_time = datetime.now()
                 self._save_history(task, result, start_time, end_time)
+                # 触发任务结束钩子
+                trigger_hook("on_task_end", task=task, result=result.message or "Task completed")
                 return result.message or "Task completed"
 
         # Max steps reached
@@ -141,6 +146,8 @@ class PhoneAgent:
             end_time,
             error_message="Max steps reached"
         )
+        # 触发任务结束钩子（错误情况）
+        trigger_hook("on_task_end", task=task, result="Max steps reached")
         return "Max steps reached"
 
     def step(self, task: str | None = None) -> StepResult:
@@ -168,7 +175,6 @@ class PhoneAgent:
         self._step_count = 0
         self._app_history = []
         self._last_screen_info = None
-        self._recent_actions = []
 
     def _manage_context(self) -> None:
         """
@@ -204,52 +210,6 @@ class PhoneAgent:
 
             logger.debug(f"Context managed: kept {len(self._context)} messages (last {max_rounds} rounds)")
 
-    def _check_repeated_action(self, action: dict[str, Any]) -> bool:
-        """
-        检测动作是否重复执行。
-
-        Args:
-            action: 当前动作
-
-        Returns:
-            True 如果检测到重复动作，False  otherwise
-        """
-        if not self.agent_config.enable_repeat_detection:
-            return False
-
-        # 获取当前动作的简化签名（只关注 action 类型和关键参数）
-        action_type = action.get('action', '')
-
-        # 对于 Swipe 操作，检查方向是否相同
-        if action_type == 'Swipe':
-            start = action.get('start', [])
-            end = action.get('end', [])
-            # 简化签名：Swipe + 方向
-            action_signature = f"Swipe_{start}_{end}"
-        else:
-            # 其他操作只检查类型
-            action_signature = str(action)
-
-        # 添加到最近动作列表
-        self._recent_actions.append(action_signature)
-
-        # 限制最近动作列表大小
-        max_repeat = self.agent_config.max_repeated_actions
-        if max_repeat <= 0:
-            return False
-
-        if len(self._recent_actions) > max_repeat:
-            self._recent_actions = self._recent_actions[-max_repeat:]
-
-        # 检查是否连续重复
-        if len(self._recent_actions) >= max_repeat:
-            if len(set(self._recent_actions[-max_repeat:])) == 1:
-                # 检测到连续重复动作
-                logger.warning(f"检测到连续 {max_repeat} 次相同动作：{action_type}")
-                return True
-
-        return False
-
     def _build_optimized_user_message(
         self,
         user_prompt: str | None,
@@ -272,11 +232,14 @@ class PhoneAgent:
         # 检测应用切换
         app_changed = False
         if self._app_history and current_app != self._app_history[-1]:
+            old_app = self._app_history[-1]
             self._app_history.append(current_app)
             app_changed = True
             # 限制应用历史记录数量
             if len(self._app_history) > 5:
                 self._app_history = self._app_history[-5:]
+            # 触发应用切换钩子
+            trigger_hook("on_app_changed", old_app=old_app, new_app=current_app)
 
         # 构建屏幕信息
         extra_info = {}
@@ -362,19 +325,6 @@ class PhoneAgent:
             if self.agent_config.verbose:
                 traceback.print_exc()
             action = finish(message=response.action)
-
-        # 检测重复动作
-        if self._check_repeated_action(action):
-            logger.warning("⚠️  检测到重复动作，强制结束任务")
-            action = finish(message="检测到重复操作，可能页面已无更多内容，任务强制结束")
-            result = self.action_handler.execute(action, screenshot)
-            return StepResult(
-                success=True,
-                finished=True,
-                action=action,
-                thinking="检测到重复动作",
-                message=result.message,
-            )
 
         if self.agent_config.verbose:
             # Print thinking process

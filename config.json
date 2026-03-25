@@ -1,6 +1,8 @@
 {
-  "_comment": "AutoPhone 配置文件 - 新格式",
+  "_comment": "AutoPhone 配置文件",
   "_env_hint": "API 密钥建议通过环境变量设置：export AUTOPHONE_API_KEY='your-key'",
+
+  "work_folder": "",
 
   "model": {
     "_comment": "provider 可选值：local, anthropic, openai",

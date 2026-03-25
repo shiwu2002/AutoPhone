@@ -1,4 +1,8 @@
-"""文件处理工具集 - Excel 读取和批量执行。"""
+"""文件处理工具集 - Excel 读取和写入。
+
+注意：此模块提供基本的 Excel 操作功能。
+如需批量执行功能，请使用 skills/excel_tools Skill。
+"""
 
 import logging
 from pathlib import Path
@@ -268,87 +272,3 @@ def handle_write_excel_answer(
     except Exception as e:
         logger.error(f"写入答案失败：{e}", exc_info=True)
         return ActionResult(False, False, f"写入答案失败：{e}")
-
-
-def handle_execute_excel_batch(
-    action: dict[str, Any],
-    screenshot: Screenshot,
-    device_id: Optional[str] = None,
-    model_config: Any = None,
-    agent_config: Any = None,
-) -> ActionResult:
-    """
-    处理 Excel 批量执行动作。
-
-    Args:
-        action: 动作字典，包含 file, task, column 等参数
-        screenshot: Screenshot 对象
-        device_id: 设备 ID
-        model_config: 模型配置
-        agent_config: Agent 配置
-
-    Returns:
-        ActionResult: 执行结果
-    """
-    if not PANDAS_AVAILABLE:
-        return ActionResult(
-            False, False,
-            "Excel 工具不可用：需要安装 pandas 和 openpyxl。请运行：pip install pandas openpyxl"
-        )
-
-    file_path = action.get("file")
-    task_template = action.get("task")
-
-    if not file_path or not task_template:
-        return ActionResult(
-            False, False,
-            "Execute_Excel_Batch 需要 file 和 task 参数"
-        )
-
-    try:
-        from phone_agent.tools.excel_tool import ExcelTool
-
-        # 获取可选参数
-        question_column = action.get("column", "问题")
-        embed_screenshot = action.get("embed_screenshot", "false").lower() == "true"
-        compare_answer = action.get("compare_answer", "false").lower() == "true"
-        max_questions = int(action.get("max_questions", 0))
-
-        # 创建 Excel 工具并执行
-        tool = ExcelTool(
-            model_config=model_config,
-            agent_config=agent_config,
-        )
-
-        result = tool.execute_batch(
-            file_path=file_path,
-            task_template=task_template,
-            question_column=question_column,
-            embed_screenshot=embed_screenshot,
-            compare_answer=compare_answer,
-            max_questions=max_questions,
-        )
-
-        # 返回结果摘要
-        summary = result.to_summary()
-        logger.info(f"Excel 批量执行完成：{summary}")
-
-        return ActionResult(
-            success=True,
-            should_finish=False,
-            message=f"Excel 批量执行完成：{summary}. 输出文件：{result.output_path}",
-        )
-
-    except ImportError as e:
-        return ActionResult(
-            success=False,
-            should_finish=False,
-            message=f"Excel 工具不可用：{e}. 请安装：pip install pandas openpyxl",
-        )
-    except Exception as e:
-        logger.error(f"Excel 批量执行失败：{e}", exc_info=True)
-        return ActionResult(
-            success=False,
-            should_finish=False,
-            message=f"Excel 批量执行失败：{e}",
-        )

@@ -1,0 +1,11 @@
+# MainAgent 依赖
+
+# 基础依赖
+pandas>=2.0.0
+openpyxl>=3.0.0
+
+# 日志
+# (使用 Python 内置 logging 模块，无需额外依赖)
+
+# PhoneAgent 依赖（用于 Skill 执行手机操作）
+# 通过引用父项目，无需重复安装

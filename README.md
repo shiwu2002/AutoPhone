@@ -391,18 +391,107 @@ python test_coordinate_optimization.py
 
 | 命令 | 说明 |
 |------|------|
-| `python main.py` | 交互模式 |
+| `python main.py` | 交互模式（子 Agent - 直接手机操作） |
 | `python main.py "任务描述"` | 直接执行任务 |
+| `python -m mainAgent.main` | 主 Agent 交互模式（推荐用于批量任务） |
+| `cd mainAgent && python main.py` | 主 Agent 交互模式（方式 2） |
+| `python -m mainAgent.main -t "任务描述"` | 主 Agent 执行任务 |
+| `python -m mainAgent.main -s liantong_ai_query --skill-args '{"question":"..."}'` | 直接调用 Skill |
+| `python -m mainAgent.main --list-skills` | 列出所有可用 Skill |
 | `python main.py --config` | 配置向导 |
 | `python main.py --list-devices` | 查看设备 |
 | `python main.py --list-apps` | 查看支持的应用 |
-| `python main.py --batch 文件.xlsx` | 批量执行任务 |
+| `python main.py --batch 文件.xlsx` | 批量执行任务（旧版） |
 | `python excel_task.py --file 文件.xlsx --task "任务"` | Excel 任务执行 |
 | `python excel_task.py --file 文件.xlsx --task "任务" --embed-screenshot` | Excel 任务执行并嵌入截图 |
 | `python server.py` | 启动 Web 界面（含 Excel 批量任务功能） |
 | `python test_coordinate_optimization.py` | 测试坐标优化 |
 
 ---
+
+## 🏗️ 主 Agent + Skill 架构（新增）
+
+### 架构说明
+
+为了解决 Agent 在手机操作和文档操作之间容易混淆的问题，新增了主 Agent + Skill 架构：
+
+```
+┌─────────────────────────────────────────┐
+│          主 Agent (MasterAgent)          │
+│  - 负责任务编排                          │
+│  - 操作 Excel 文档                        │
+│  - 调用 Skill 执行手机操作                │
+│  - 位置：mainAgent/                      │
+└─────────────────┬───────────────────────┘
+                  │ 调用
+                  ▼
+┌─────────────────────────────────────────┐
+│  Skill（封装完整的手机操作流程）          │
+│  - liantong_ai_query: 联通 AI 客服问答    │
+│  - get_excel_question: 从 Excel 读取问题  │
+│  - write_excel_answer: 将答案写入 Excel   │
+│  - execute_excel_batch: Excel 批量执行   │
+│  - mobile_app_operation: 通用手机操作    │
+└─────────────────┬───────────────────────┘
+                  │ 执行
+                  ▼
+          ┌───────────────┐
+          │   手机设备    │
+          │ (通过 ADB 控制) │
+          └───────────────┘
+```
+
+### 使用示例
+
+**1. 单个问题查询（联通客服）：**
+```bash
+# 方式一：使用主 Agent 交互式
+cd mainAgent
+python main.py
+> 查询联通安全管家的功能
+
+# 方式二：直接调用 Skill
+python -m mainAgent.main -s liantong_ai_query --skill-args '{"question":"联通安全管家有哪些功能？"}'
+```
+
+**2. Excel 批量处理（推荐方式）：**
+```bash
+# 主 Agent 会自动：
+# 1. 从 Excel 读取问题
+# 2. 调用联通客服 Skill 获取答案
+# 3. 将答案写回 Excel
+python -m mainAgent.main -t "处理 questions.xlsx 中的所有联通业务问题"
+```
+
+**3. 在代码中使用：**
+```python
+from mainAgent.agent import MasterAgent
+
+agent = MasterAgent()
+
+# 单个查询
+result = agent.execute_task("查询联通宽带资费")
+print(result)
+
+# Excel 批量处理
+result = agent.execute_task("处理 questions.xlsx 中的所有问题")
+print(result)
+
+# 直接调用 Skill
+result = agent.call_skill("liantong_ai_query", question="5G 套餐有哪些档位？")
+print(result["answer"])
+```
+
+### 可用 Skills
+
+| Skill ID | 名称 | 说明 |
+|----------|------|------|
+| `liantong_ai_query` | 联通 AI 客服问答 | 打开联通 APP→点击客服→发送问题→返回 AI 回复 |
+| `get_excel_question` | 从 Excel 读取问题 | 获取下一道待处理的问题及行号 |
+| `write_excel_answer` | 将答案写入 Excel | 将答案写入指定行 |
+| `execute_excel_batch` | Excel 批量执行 | 获取所有待处理问题列表 |
+
+**注意：** 主 Agent 仅支持联通客服相关的手机操作。如需支持其他应用的操作，需要添加专门的 Skill。
 
 ## 📖 文档
 
