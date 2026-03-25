@@ -180,31 +180,24 @@ class ExcelTool:
             logger.info(f"{'='*60}")
 
             try:
-                # 当前行号（Excel行号从1开始，第1行是表头，数据从第2行开始）
-                current_row = i + 1
-
-                # 构建任务，包含文件路径和行号信息
+                # 构建任务
                 if compare_answer and i-1 < len(standard_answers):
                     standard_answer = standard_answers[i-1]
                     if "{content}" in task_template:
-                        task_content = task_template.replace("{content}", question)
+                        full_task = self._build_compare_task(
+                            task_template.replace("{content}", question),
+                            standard_answer
+                        )
                     else:
-                        task_content = f"{task_template}\n\n问题：{question}"
-                    full_task = self._build_compare_task(task_content, standard_answer)
+                        full_task = self._build_compare_task(
+                            f"{task_template}\n\n问题：{question}",
+                            standard_answer
+                        )
                 else:
                     if "{content}" in task_template:
-                        task_content = task_template.replace("{content}", question)
+                        full_task = task_template.replace("{content}", question)
                     else:
-                        task_content = f"{task_template}\n\n问题：{question}"
-
-                # 添加文件路径和行号信息，让智能体知道写入哪里
-                full_task = f"""{task_content}
-
-【重要信息】
-- Excel文件路径：{output_path}
-- 当前行号：{current_row}
-- 完成后请执行：do(action="WriteExcelAnswer", file="{output_path}", row={current_row}, answer="完整答案内容")
-"""
+                        full_task = f"{task_template}\n\n问题：{question}"
 
                 # 执行任务
                 answer = agent.run(full_task)
@@ -238,8 +231,8 @@ class ExcelTool:
                 success_count += 1
                 logger.info(f"✅ 完成：{answer[:50] if answer else '无结果'}...")
 
-                # 注意：不在这里调用 agent.reset()，因为下次循环 agent.run() 会自动清空上下文
-                # 这样可以避免状态污染问题
+                # 重置 Agent 状态
+                agent.reset()
 
             except Exception as e:
                 logger.error(f"❌ 执行失败：{e}")

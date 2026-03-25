@@ -60,8 +60,6 @@ class AgentConfig:
     lang: str = "cn"
     max_context_rounds: int = 5
     remember_app_info: bool = True
-    max_repeated_actions: int = 3
-    enable_repeat_detection: bool = True
 
     @classmethod
     def from_dict(cls, data: dict) -> "AgentConfig":
@@ -71,9 +69,7 @@ class AgentConfig:
             verbose=data.get("verbose", True),
             lang=data.get("lang", "cn"),
             max_context_rounds=data.get("max_context_rounds", 5),
-            remember_app_info=data.get("remember_app_info", True),
-            max_repeated_actions=data.get("max_repeated_actions", 3),
-            enable_repeat_detection=data.get("enable_repeat_detection", True)
+            remember_app_info=data.get("remember_app_info", True)
         )
 
 
