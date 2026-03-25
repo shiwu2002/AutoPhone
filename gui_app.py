@@ -305,37 +305,243 @@ class SettingsPanel(tk.Toplevel):
         # 创建可滚动区域
         container, scrollable_frame, canvas = self.create_scrollable_frame(parent)
 
-        # 已注册 Skills 列表
+        # ===== 已注册 Skills 列表 =====
         skills_list_frame = tk.LabelFrame(
             scrollable_frame, text="🔌 已注册的 Skills",
             font=('Microsoft YaHei', 10, 'bold'),
             bg='white', fg='#666',
             padx=15, pady=15
         )
-        skills_list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        skills_list_frame.pack(fill=tk.X, padx=20, pady=10)
 
         self.skills_list_text = scrolledtext.ScrolledText(
             skills_list_frame,
-            height=10,
+            height=6,
             font=('Consolas', 9),
             wrap=tk.WORD,
             bg='#f9f9f9'
         )
-        self.skills_list_text.pack(fill=tk.BOTH, expand=True)
+        self.skills_list_text.pack(fill=tk.X)
         self.skills_list_text.config(state=tk.DISABLED)
 
-        # 帮助说明和配置文件
+        # ===== 模型配置 =====
+        model_frame = tk.LabelFrame(
+            scrollable_frame, text="🤖 模型配置",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        model_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # 协议选择
+        tk.Label(
+            model_frame, text="模型协议",
+            font=('Microsoft YaHei', 9, 'bold'),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(0, 5))
+
+        self.skills_protocol_var = tk.StringVar(value="local")
+        protocol_frame = tk.Frame(model_frame, bg='white')
+        protocol_frame.pack(fill=tk.X, pady=5)
+
+        protocols = [
+            ("local", "Ollama / 本地服务"),
+            ("openai", "OpenAI 兼容"),
+            ("anthropic", "Anthropic Claude"),
+            ("custom", "自定义")
+        ]
+        for value, label in protocols:
+            tk.Radiobutton(
+                protocol_frame, text=label, variable=self.skills_protocol_var,
+                value=value, bg='white', font=('Microsoft YaHei', 9),
+                command=self.on_skills_protocol_change
+            ).pack(anchor=tk.W)
+
+        # Base URL
+        tk.Label(
+            model_frame, text="Base URL",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.skills_base_url = tk.Entry(model_frame, font=('Microsoft YaHei', 9), width=60)
+        self.skills_base_url.pack(fill=tk.X, pady=2)
+
+        # Model Name
+        tk.Label(
+            model_frame, text="Model Name",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.skills_model_name = tk.Entry(model_frame, font=('Microsoft YaHei', 9), width=60)
+        self.skills_model_name.pack(fill=tk.X, pady=2)
+
+        # API Key
+        tk.Label(
+            model_frame, text="API Key",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.skills_api_key = tk.Entry(model_frame, font=('Microsoft YaHei', 9), width=60, show='*')
+        self.skills_api_key.pack(fill=tk.X, pady=2)
+
+        # ===== 设备配置 =====
+        device_frame = tk.LabelFrame(
+            scrollable_frame, text="📱 设备配置 (ADB)",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        device_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # 设备类型
+        tk.Label(
+            device_frame, text="设备类型",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(0, 5))
+        self.device_type_var = tk.StringVar(value="adb")
+        device_type_frame = tk.Frame(device_frame, bg='white')
+        device_type_frame.pack(fill=tk.X, pady=5)
+        tk.Radiobutton(
+            device_type_frame, text="本地 ADB", variable=self.device_type_var,
+            value="adb", bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W)
+        tk.Radiobutton(
+            device_type_frame, text="远程连接", variable=self.device_type_var,
+            value="remote", bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W)
+
+        # 远程地址
+        tk.Label(
+            device_frame, text="远程 ADB 地址 (如 192.168.1.100:5555)",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.remote_address = tk.Entry(device_frame, font=('Microsoft YaHei', 9), width=60)
+        self.remote_address.pack(fill=tk.X, pady=2)
+        tk.Label(
+            device_frame, text="留空则使用本地 ADB",
+            font=('Microsoft YaHei', 8),
+            bg='white', fg='#999'
+        ).pack(anchor=tk.W)
+
+        # 自动连接
+        self.auto_connect_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            device_frame, text="自动连接设备",
+            variable=self.auto_connect_var,
+            bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W, pady=5)
+
+        # ===== 坐标优化配置 =====
+        coord_frame = tk.LabelFrame(
+            scrollable_frame, text="🎯 坐标优化",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        coord_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # 启用坐标优化
+        self.coord_enabled_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            coord_frame, text="启用坐标优化",
+            variable=self.coord_enabled_var,
+            bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W, pady=5)
+
+        # 点击偏移 X
+        tk.Label(
+            coord_frame, text="点击偏移 X",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.click_offset_x = tk.Entry(coord_frame, font=('Microsoft YaHei', 9), width=20)
+        self.click_offset_x.pack(anchor=tk.W, pady=2)
+
+        # 点击偏移 Y
+        tk.Label(
+            coord_frame, text="点击偏移 Y",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.click_offset_y = tk.Entry(coord_frame, font=('Microsoft YaHei', 9), width=20)
+        self.click_offset_y.pack(anchor=tk.W, pady=2)
+
+        # 区域点击
+        self.use_region_click_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            coord_frame, text="使用区域点击（而非单点）",
+            variable=self.use_region_click_var,
+            bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W, pady=5)
+
+        # 最小点击区域
+        tk.Label(
+            coord_frame, text="最小点击区域大小",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.min_click_region = tk.Entry(coord_frame, font=('Microsoft YaHei', 9), width=20)
+        self.min_click_region.pack(anchor=tk.W, pady=2)
+
+        # ===== Agent 配置 =====
+        agent_frame = tk.LabelFrame(
+            scrollable_frame, text="🤖 Agent 行为",
+            font=('Microsoft YaHei', 10, 'bold'),
+            bg='white', fg='#666',
+            padx=15, pady=15
+        )
+        agent_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # 最大步骤数
+        tk.Label(
+            agent_frame, text="最大执行步骤",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(0, 2))
+        self.max_steps = tk.Entry(agent_frame, font=('Microsoft YaHei', 9), width=20)
+        self.max_steps.pack(anchor=tk.W, pady=2)
+
+        # 最大重复次数
+        tk.Label(
+            agent_frame, text="最大重复动作次数",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.max_repeated_actions = tk.Entry(agent_frame, font=('Microsoft YaHei', 9), width=20)
+        self.max_repeated_actions.pack(anchor=tk.W, pady=2)
+
+        # 重复检测
+        self.enable_repeat_detection_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            agent_frame, text="启用重复动作检测",
+            variable=self.enable_repeat_detection_var,
+            bg='white', font=('Microsoft YaHei', 9)
+        ).pack(anchor=tk.W, pady=5)
+
+        # 上下文轮数
+        tk.Label(
+            agent_frame, text="最大上下文轮数",
+            font=('Microsoft YaHei', 9),
+            bg='white'
+        ).pack(anchor=tk.W, pady=(10, 2))
+        self.max_context_rounds = tk.Entry(agent_frame, font=('Microsoft YaHei', 9), width=20)
+        self.max_context_rounds.pack(anchor=tk.W, pady=2)
+
+        # 说明文字
         help_frame = tk.LabelFrame(
-            scrollable_frame, text="💡 PhoneAgent 配置",
+            scrollable_frame, text="💡 说明",
             font=('Microsoft YaHei', 10, 'bold'),
             bg='white', fg='#666',
             padx=15, pady=15
         )
         help_frame.pack(fill=tk.X, padx=20, pady=10)
 
-        help_text = """• Skills（如联通客服问答）使用独立的 PhoneAgent 配置
-• 配置文件：phone_agent_config.json
-• 与 MasterAgent 的模型配置相互独立
+        help_text = """• 模型配置：Skills 执行时使用的 AI 模型
+• 设备配置：ADB 连接参数，远程地址留空则使用本地 ADB
+• 坐标优化：点击时的偏移和区域设置，提高点击准确度
+• Agent 行为：控制任务执行的最大步骤、重复检测等
 • 修改后需要重启服务器生效"""
 
         tk.Label(
@@ -345,34 +551,11 @@ class SettingsPanel(tk.Toplevel):
             justify=tk.LEFT
         ).pack(anchor=tk.W)
 
-        # 按钮区域
-        btn_frame = tk.Frame(help_frame, bg='white')
-        btn_frame.pack(fill=tk.X, padx=0, pady=(10, 0))
-
-        open_btn = tk.Button(
-            btn_frame, text="📄 打开 phone_agent_config.json",
-            command=self.open_phone_agent_config,
-            bg='#667eea', fg='white',
-            font=('Microsoft YaHei', 10),
-            padx=15, pady=5
-        )
-        open_btn.pack(side=tk.LEFT)
-
-        # 刷新按钮
-        refresh_btn = tk.Button(
-            btn_frame, text="🔄 刷新 Skills 列表",
-            command=self.load_skills_list,
-            bg='#4caf50', fg='white',
-            font=('Microsoft YaHei', 10),
-            padx=15, pady=5
-        )
-        refresh_btn.pack(side=tk.RIGHT, padx=(10, 0))
-
         # 占位符
         tk.Label(scrollable_frame, text="", bg='#f5f7fa').pack(fill=tk.BOTH, expand=True)
 
     def on_protocol_change(self):
-        """协议切换时更新提示和默认值。"""
+        """协议切换时更新提示和默认值（MasterAgent）。"""
         protocol = self.protocol_var.get()
 
         hints = {
@@ -402,6 +585,30 @@ class SettingsPanel(tk.Toplevel):
             self.api_key_entry.delete(0, tk.END)
             self.api_key_entry.insert(0, key)
 
+    def on_skills_protocol_change(self):
+        """协议切换时更新默认值（Skills/PhoneAgent）。"""
+        protocol = self.skills_protocol_var.get()
+
+        defaults = {
+            "local": ("http://localhost:11434/v1", "qwen3.5:4b", "ollama"),
+            "openai": ("https://api-inference.modelscope.cn/v1", "ZhipuAI/AutoGLM-Phone-9B", ""),
+            "anthropic": ("https://api.anthropic.com", "claude-sonnet-4-6-20250514", ""),
+            "custom": ("", "", "")
+        }
+
+        url, model, key = defaults.get(protocol, ("", "", ""))
+
+        # 只在当前为空时填充默认值
+        if not self.skills_base_url.get():
+            self.skills_base_url.delete(0, tk.END)
+            self.skills_base_url.insert(0, url)
+        if not self.skills_model_name.get():
+            self.skills_model_name.delete(0, tk.END)
+            self.skills_model_name.insert(0, model)
+        if not self.skills_api_key.get():
+            self.skills_api_key.delete(0, tk.END)
+            self.skills_api_key.insert(0, key)
+
     def browse_folder(self):
         """浏览选择文件夹。"""
         folder = filedialog.askdirectory(title="选择工作文件夹")
@@ -411,7 +618,7 @@ class SettingsPanel(tk.Toplevel):
 
     def open_phone_agent_config(self):
         """打开 PhoneAgent 配置文件。"""
-        config_path = Path(__file__).parent.parent / "phone_agent_config.json"
+        config_path = Path(__file__).parent.parent / "phone_agent" / "config" / "phone_agent_config.json"
         if config_path.exists():
             import os
             if os.name == 'nt':
@@ -425,6 +632,7 @@ class SettingsPanel(tk.Toplevel):
 
     def load_config(self):
         """加载配置。"""
+        # 加载 MasterAgent 配置
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
@@ -446,13 +654,59 @@ class SettingsPanel(tk.Toplevel):
 
             self.on_protocol_change()
 
-        # 加载 Skills 配置预览
-        self.load_skills_preview()
+        # 加载 Skills/PhoneAgent 配置
+        self.load_skills_config()
 
-    def load_skills_preview(self):
-        """加载 Skills 配置预览（已移除，仅保留 Skills 列表）。"""
-        # 加载已注册 Skills 列表
-        self.load_skills_list()
+        # 加载 Skills 列表
+        self.after(200, self.load_skills_list)
+
+    def load_skills_config(self):
+        """加载 Skills/PhoneAgent 配置。"""
+        config_path = Path(__file__).parent.parent / "phone_agent" / "config" / "phone_agent_config.json"
+        if not config_path.exists():
+            return
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            # 模型配置
+            model_config = config.get('model', {})
+            provider = model_config.get('provider', 'local')
+            self.skills_protocol_var.set(provider)
+
+            providers = model_config.get('providers', {})
+            if provider in providers:
+                provider_config = providers[provider]
+                self.skills_base_url.insert(0, provider_config.get('base_url', ''))
+                self.skills_model_name.insert(0, provider_config.get('model', ''))
+                self.skills_api_key.insert(0, provider_config.get('api_key', ''))
+
+            # 设备配置
+            device_config = config.get('device', {})
+            self.device_type_var.set(device_config.get('type', 'adb'))
+            remote_addr = device_config.get('remote_address')
+            if remote_addr:
+                self.remote_address.insert(0, remote_addr)
+            self.auto_connect_var.set(device_config.get('auto_connect', True))
+
+            # 坐标优化
+            coord_config = config.get('coordinate_optimization', {})
+            self.coord_enabled_var.set(coord_config.get('enabled', True))
+            self.click_offset_x.insert(0, str(coord_config.get('click_offset_x', 8)))
+            self.click_offset_y.insert(0, str(coord_config.get('click_offset_y', 8)))
+            self.use_region_click_var.set(coord_config.get('use_region_click', True))
+            self.min_click_region.insert(0, str(coord_config.get('min_click_region', 30)))
+
+            # Agent 配置
+            agent_config = config.get('agent', {})
+            self.max_steps.insert(0, str(agent_config.get('max_steps', 20)))
+            self.max_repeated_actions.insert(0, str(agent_config.get('max_repeated_actions', 5)))
+            self.enable_repeat_detection_var.set(agent_config.get('enable_repeat_detection', True))
+            self.max_context_rounds.insert(0, str(agent_config.get('max_context_rounds', 3)))
+
+        except Exception as e:
+            print(f"加载 Skills 配置失败：{e}")
 
     def load_skills_list(self):
         """加载已注册 Skills 列表。"""
@@ -514,6 +768,7 @@ class SettingsPanel(tk.Toplevel):
 
     def save_config(self):
         """保存配置。"""
+        # 保存 MasterAgent 配置
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                 config = json.load(f)
@@ -539,9 +794,70 @@ class SettingsPanel(tk.Toplevel):
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-        messagebox.showinfo("✅ 保存成功", "配置已保存到 config.json\n\nSkills 配置请在 phone_agent_config.json 中修改")
+        # 保存 Skills/PhoneAgent 配置
+        self.save_skills_config()
+
+        messagebox.showinfo("✅ 保存成功", "配置已保存\n\n• MasterAgent 配置：config.json\n• Skills 配置：phone_agent/config/phone_agent_config.json\n\n修改后需要重启服务器生效")
         self.parent.load_config()
         self.destroy()
+
+    def save_skills_config(self):
+        """保存 Skills/PhoneAgent 配置。"""
+        config_path = Path(__file__).parent.parent / "phone_agent" / "config" / "phone_agent_config.json"
+
+        # 确保目录存在
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 加载现有配置
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        else:
+            config = {}
+
+        # 模型配置
+        provider = self.skills_protocol_var.get()
+        config['model'] = {
+            'provider': provider,
+            'providers': {
+                provider: {
+                    'base_url': self.skills_base_url.get(),
+                    'model': self.skills_model_name.get(),
+                    'api_key': self.skills_api_key.get(),
+                    'max_tokens': 4096 if provider == 'local' else 2048
+                }
+            }
+        }
+
+        # 设备配置
+        config['device'] = {
+            'type': self.device_type_var.get(),
+            'remote_address': self.remote_address.get() or None,
+            'auto_connect': self.auto_connect_var.get()
+        }
+
+        # 坐标优化
+        config['coordinate_optimization'] = {
+            'enabled': self.coord_enabled_var.get(),
+            'click_offset_x': int(self.click_offset_x.get() or 8),
+            'click_offset_y': int(self.click_offset_y.get() or 8),
+            'use_region_click': self.use_region_click_var.get(),
+            'min_click_region': int(self.min_click_region.get() or 30)
+        }
+
+        # Agent 配置
+        config['agent'] = {
+            'max_steps': int(self.max_steps.get() or 20),
+            'lang': 'cn',
+            'verbose': True,
+            'max_context_rounds': int(self.max_context_rounds.get() or 3),
+            'remember_app_info': True,
+            'max_repeated_actions': int(self.max_repeated_actions.get() or 5),
+            'enable_repeat_detection': self.enable_repeat_detection_var.get()
+        }
+
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 class MainApp:

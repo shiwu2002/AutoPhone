@@ -59,7 +59,7 @@ SYSTEM_PROMPT = """你是手机操作助手，专门负责向联通 AI 客服提
 def _load_config() -> dict:
     """加载 PhoneAgent 配置文件（Skills 专用）。"""
     # 使用独立的 phone_agent_config.json 配置文件
-    config_path = Path(__file__).parent.parent.parent / "phone_agent_config.json"
+    config_path = Path(__file__).parent.parent.parent / "phone_agent" / "config" / "phone_agent_config.json"
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)

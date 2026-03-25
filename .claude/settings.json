@@ -121,7 +121,9 @@
       "Bash(start python:*)",
       "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); skills=data.get\\(''''skills'''',[]\\); print\\(f''''Skills 数量：{len\\(skills\\)}''''\\); [print\\(f\"\"  - {s.get\\(''''skill_id''''\\)}: {s.get\\(''''name''''\\)}\"\"\\) for s in skills]\")",
       "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(f''''成功：{data.get\\(\"\"success\"\"\\)}''''\\); print\\(f''''Skills 数量：{len\\(data.get\\(\"\"skills\"\", []\\)\\)}''''\\)\")",
-      "Bash(taskkill /F /FI \"WINDOWTITLE eq PhoneAgent*\")"
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq PhoneAgent*\")",
+      "Bash(move /Y \"e:\\\\Python\\\\AutoPhone\\\\phone_agent_config.json\" \"e:\\\\Python\\\\AutoPhone\\\\phone_agent\\\\config\\\\phone_agent_config.json\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(f''''Skills 数量：{len\\(data.get\\(\"\"skills\"\", []\\)\\)}''''\\); [print\\(f\"\"  - {s.get\\(''''skill_id''''\\)}: {s.get\\(''''name''''\\)}\"\"\\) for s in data.get\\(''''skills'''', []\\)[:3]]\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans",
