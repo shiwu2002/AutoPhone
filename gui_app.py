@@ -3,6 +3,7 @@
 PhoneAgent GUI 应用 - 基于 tkinter 的桌面客户端
 """
 
+import sys
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import threading
@@ -59,7 +60,6 @@ class PhoneAgentGUI:
     def setup_styles(self):
         """设置 UI 样式"""
         style = ttk.Style()
-        style.theme_use('clam')
 
         # 配置颜色
         self.colors = {
@@ -74,11 +74,120 @@ class PhoneAgentGUI:
             'text_light': '#666',
         }
 
-        style.configure('Title.TLabel', font=('Arial', 16, 'bold'), foreground=self.colors['primary'])
-        style.configure('Subtitle.TLabel', font=('Arial', 12), foreground=self.colors['text_light'])
-        style.configure('Success.TLabel', foreground=self.colors['success'])
-        style.configure('Error.TLabel', foreground=self.colors['error'])
-        style.configure('Primary.TButton', font=('Arial', 10, 'bold'))
+        # 设置中文字体 - 优先使用系统默认中文字体
+        if sys.platform == 'darwin':  # macOS
+            default_font = ('PingFang SC', 10)
+            title_font = ('PingFang SC', 12, 'bold')
+            heading_font = ('PingFang SC', 11, 'bold')
+            button_font = ('PingFang SC', 11, 'bold')
+        elif sys.platform == 'win32':  # Windows
+            default_font = ('Microsoft YaHei', 10)
+            title_font = ('Microsoft YaHei', 12, 'bold')
+            heading_font = ('Microsoft YaHei', 11, 'bold')
+            button_font = ('Microsoft YaHei', 11, 'bold')
+        else:  # Linux
+            default_font = ('WenQuanYi Micro Hei', 10)
+            title_font = ('WenQuanYi Micro Hei', 12, 'bold')
+            heading_font = ('WenQuanYi Micro Hei', 11, 'bold')
+            button_font = ('WenQuanYi Micro Hei', 11, 'bold')
+
+        self.default_font = default_font
+        self.title_font = title_font
+        self.heading_font = heading_font
+        self.button_font = button_font
+
+        # macOS 需要使用特殊方式配置样式
+        if sys.platform == 'darwin':
+            # 在 macOS 上，不要使用 theme_use，直接配置元素
+            # 获取当前主题的元素列表
+            try:
+                # 尝试配置按钮元素的颜色
+                style.element_create('Button.background', 'from', ('active', 'pressed', '!disabled'))
+            except Exception:
+                pass
+
+            # 配置样式 - macOS 上使用图片方式
+            style.configure('primary.TButton',
+                font=self.button_font,
+                padding=[10, 8],
+                background=self.colors['primary'],
+                foreground='white',
+                focuscolor=self.colors['primary'],
+                relief='flat',
+                borderwidth=0)
+            style.map('primary.TButton',
+                background=[('active', '#5566cc'), ('pressed', '#4455bb'), ('!disabled', self.colors['primary'])],
+                foreground=[('active', 'white'), ('pressed', 'white'), ('!disabled', 'white')])
+
+            style.configure('success.TButton',
+                font=self.button_font,
+                padding=[10, 8],
+                background=self.colors['success'],
+                foreground='white')
+            style.map('success.TButton',
+                background=[('active', '#43a047'), ('pressed', '#3d8b40'), ('!disabled', self.colors['success'])],
+                foreground=[('active', 'white'), ('pressed', 'white'), ('!disabled', 'white')])
+
+            style.configure('info.TButton',
+                font=self.button_font,
+                padding=[10, 8],
+                background=self.colors['info'],
+                foreground='white')
+            style.map('info.TButton',
+                background=[('active', '#1976d2'), ('pressed', '#1565c0'), ('!disabled', self.colors['info'])],
+                foreground=[('active', 'white'), ('pressed', 'white'), ('!disabled', 'white')])
+
+            style.configure('danger.TButton',
+                font=self.button_font,
+                padding=[10, 8],
+                background=self.colors['error'],
+                foreground='white')
+            style.map('danger.TButton',
+                background=[('active', '#e53935'), ('pressed', '#d32f2f'), ('!disabled', self.colors['error'])],
+                foreground=[('active', 'white'), ('pressed', 'white'), ('!disabled', 'white')])
+
+            style.configure('default.TButton',
+                font=self.button_font,
+                padding=[10, 8],
+                background='#e0e0e0',
+                foreground='#333')
+            style.map('default.TButton',
+                background=[('active', '#d0d0d0'), ('pressed', '#c0c0c0'), ('!disabled', '#e0e0e0')],
+                foreground=[('active', '#333'), ('pressed', '#333'), ('!disabled', '#333')])
+        else:
+            # 其他平台使用 clam 主题
+            style.theme_use('clam')
+
+            style.configure('primary.TButton', background=self.colors['primary'], foreground='white', font=self.button_font, padding=[10, 8])
+            style.map('primary.TButton',
+                background=[('active', '#5566cc'), ('pressed', '#4455bb')],
+                foreground=[('active', 'white'), ('pressed', 'white')])
+
+            style.configure('success.TButton', background=self.colors['success'], foreground='white', font=self.button_font, padding=[10, 8])
+            style.map('success.TButton',
+                background=[('active', '#43a047'), ('pressed', '#3d8b40')],
+                foreground=[('active', 'white'), ('pressed', 'white')])
+
+            style.configure('info.TButton', background=self.colors['info'], foreground='white', font=self.button_font, padding=[10, 8])
+            style.map('info.TButton',
+                background=[('active', '#1976d2'), ('pressed', '#1565c0')],
+                foreground=[('active', 'white'), ('pressed', 'white')])
+
+            style.configure('danger.TButton', background=self.colors['error'], foreground='white', font=self.button_font, padding=[10, 8])
+            style.map('danger.TButton',
+                background=[('active', '#e53935'), ('pressed', '#d32f2f')],
+                foreground=[('active', 'white'), ('pressed', 'white')])
+
+            style.configure('default.TButton', background='#e0e0e0', foreground='#333', font=self.button_font, padding=[10, 8])
+            style.map('default.TButton',
+                background=[('active', '#d0d0d0'), ('pressed', '#c0c0c0')],
+                foreground=[('active', '#333'), ('pressed', '#333')])
+
+        # 配置全局字体
+        style.configure('*', font=default_font)
+        style.configure('Treeview.Heading', font=heading_font)
+        style.configure('Treeview', rowheight=25)
+        style.configure('TNotebook.Tab', font=title_font, padding=[12, 8])
 
     def create_menu(self):
         """创建菜单栏"""
@@ -109,7 +218,7 @@ class PhoneAgentGUI:
         title_label = tk.Label(
             header_frame,
             text="📱 PhoneAgent",
-            font=('Arial', 20, 'bold'),
+            font=('PingFang SC', 24, 'bold') if sys.platform == 'darwin' else ('Microsoft YaHei', 24, 'bold'),
             bg=self.colors['primary'],
             fg='white'
         )
@@ -118,7 +227,7 @@ class PhoneAgentGUI:
         subtitle_label = tk.Label(
             header_frame,
             text="AI 驱动的手机自动化代理系统",
-            font=('Arial', 10),
+            font=('PingFang SC', 11) if sys.platform == 'darwin' else ('Microsoft YaHei', 11),
             bg=self.colors['primary'],
             fg='white'
         )
@@ -131,7 +240,7 @@ class PhoneAgentGUI:
         self.device_status_label = tk.Label(
             self.device_status_frame,
             text="🔌 设备状态：检测中...",
-            font=('Arial', 10),
+            font=self.default_font,
             bg=self.colors['bg_light'],
             fg=self.colors['text_dark']
         )
@@ -142,10 +251,15 @@ class PhoneAgentGUI:
             text="📱 管理设备",
             command=self.show_device_manager,
             bg=self.colors['primary'],
-            fg='white',
-            relief=tk.FLAT,
+            fg='#333',
+            activebackground='#5566cc',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
             padx=15,
-            pady=5
+            pady=5,
+            cursor='hand2'
         )
         self.device_manage_btn.pack(side=tk.RIGHT, padx=10)
 
@@ -177,13 +291,13 @@ class PhoneAgentGUI:
     def create_task_tab(self):
         """创建任务执行标签页"""
         # 任务输入
-        input_frame = tk.LabelFrame(self.task_frame, text="任务描述", padx=10, pady=10)
+        input_frame = tk.LabelFrame(self.task_frame, text="任务描述", padx=10, pady=10, font=self.heading_font)
         input_frame.pack(fill=tk.X, padx=10, pady=10)
 
         self.task_input = scrolledtext.ScrolledText(
             input_frame,
             height=5,
-            font=('Arial', 11),
+            font=self.default_font,
             wrap=tk.WORD,
             bg='white'
         )
@@ -196,22 +310,26 @@ class PhoneAgentGUI:
             text="▶️ 执行任务",
             command=self.execute_task,
             bg=self.colors['primary'],
-            fg='white',
-            font=('Arial', 11, 'bold'),
-            relief=tk.FLAT,
-            padx=20,
-            pady=10
+            fg='#333',
+            activebackground='#5566cc',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=25,
+            pady=12,
+            cursor='hand2'
         )
-        self.execute_btn.pack(pady=10)
+        self.execute_btn.pack(pady=15)
 
         # 结果区域
-        result_frame = tk.LabelFrame(self.task_frame, text="执行结果", padx=10, pady=10)
+        result_frame = tk.LabelFrame(self.task_frame, text="执行结果", padx=10, pady=10, font=self.heading_font)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.task_result = scrolledtext.ScrolledText(
             result_frame,
             height=10,
-            font=('Arial', 10),
+            font=self.default_font,
             wrap=tk.WORD,
             bg=self.colors['bg_light']
         )
@@ -220,31 +338,38 @@ class PhoneAgentGUI:
     def create_batch_tab(self):
         """创建批量任务标签页"""
         # 文件选择区域
-        file_frame = tk.LabelFrame(self.batch_frame, text="文件选择", padx=10, pady=10)
+        file_frame = tk.LabelFrame(self.batch_frame, text="文件选择", padx=10, pady=10, font=self.heading_font)
         file_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.file_label = tk.Label(file_frame, text="未选择文件", font=('Arial', 10), fg=self.colors['text_light'])
+        self.file_label = tk.Label(file_frame, text="未选择文件", font=self.default_font, fg=self.colors['text_light'])
         self.file_label.pack(side=tk.LEFT, padx=5)
 
-        tk.Button(
+        # 保存按钮引用以便更新样式
+        self.select_file_btn = tk.Button(
             file_frame,
             text="📁 选择文件",
             command=self.select_file,
             bg=self.colors['info'],
-            fg='white',
-            relief=tk.FLAT,
-            padx=15,
-            pady=5
-        ).pack(side=tk.RIGHT, padx=5)
+            fg='#333',
+            activebackground='#1976d2',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=10,
+            cursor='hand2'
+        )
+        self.select_file_btn.pack(side=tk.RIGHT, padx=5)
 
         # 任务模板
-        task_frame = tk.LabelFrame(self.batch_frame, text="任务模板（使用 {content} 作为问题占位符）", padx=10, pady=10)
+        task_frame = tk.LabelFrame(self.batch_frame, text="任务模板（使用 {content} 作为问题占位符）", padx=10, pady=10, font=self.heading_font)
         task_frame.pack(fill=tk.X, padx=10, pady=10)
 
         self.batch_task_input = scrolledtext.ScrolledText(
             task_frame,
-            height=3,
-            font=('Arial', 11),
+            height=4,
+            font=self.default_font,
             wrap=tk.WORD,
             bg='white'
         )
@@ -260,76 +385,102 @@ class PhoneAgentGUI:
             option_frame,
             text="嵌入截图到 Excel（每个问答的截图会直接嵌入到答案旁边）",
             variable=self.embed_screenshot_var,
-            font=('Arial', 10)
+            font=self.default_font
         ).pack(anchor=tk.W)
 
         # 按钮区域
         btn_frame = tk.Frame(self.batch_frame)
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Button(
+        self.preview_btn = tk.Button(
             btn_frame,
             text="📋 预览文件",
             command=self.preview_file,
             bg=self.colors['info'],
-            fg='white',
-            relief=tk.FLAT,
-            padx=15,
-            pady=8
-        ).pack(side=tk.LEFT, padx=5)
+            fg='#333',
+            activebackground='#1976d2',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=25,
+            pady=12,
+            cursor='hand2'
+        )
+        self.preview_btn.pack(side=tk.LEFT, padx=5)
 
         self.execute_batch_btn = tk.Button(
             btn_frame,
             text="▶️ 开始执行",
             command=self.execute_batch,
             bg=self.colors['success'],
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            relief=tk.FLAT,
-            padx=20,
-            pady=8
+            fg='#333',
+            activebackground='#43a047',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=30,
+            pady=12,
+            cursor='hand2'
         )
         self.execute_batch_btn.pack(side=tk.LEFT, padx=5)
 
         # 进度区域
-        progress_frame = tk.LabelFrame(self.batch_frame, text="执行进度", padx=10, pady=10)
+        progress_frame = tk.LabelFrame(self.batch_frame, text="执行进度", padx=10, pady=10, font=self.heading_font)
         progress_frame.pack(fill=tk.X, padx=10, pady=10)
 
         self.progress_bar = ttk.Progressbar(progress_frame, mode='determinate')
         self.progress_bar.pack(fill=tk.X)
 
-        self.progress_label = tk.Label(progress_frame, text="0 / 0", font=('Arial', 10))
+        self.progress_label = tk.Label(progress_frame, text="0 / 0", font=self.default_font)
         self.progress_label.pack(pady=5)
 
-        self.current_question_label = tk.Label(progress_frame, text="", font=('Arial', 9), fg=self.colors['text_light'])
+        self.current_question_label = tk.Label(progress_frame, text="", font=self.default_font, fg=self.colors['text_light'])
         self.current_question_label.pack()
 
         # 结果区域
-        result_frame = tk.LabelFrame(self.batch_frame, text="执行结果", padx=10, pady=10)
+        result_frame = tk.LabelFrame(self.batch_frame, text="执行结果", padx=10, pady=10, font=self.heading_font)
         result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.batch_result = scrolledtext.ScrolledText(
             result_frame,
-            height=10,
-            font=('Arial', 10),
+            height=8,
+            font=self.default_font,
             wrap=tk.WORD,
             bg=self.colors['bg_light']
         )
         self.batch_result.pack(fill=tk.BOTH, expand=True)
 
-        # 下载按钮
+        # 下载按钮区域 - 单独的框架
+        download_frame = tk.Frame(result_frame, bg=self.colors['success'], padx=15, pady=15)
+        download_frame.pack(fill=tk.X, padx=0, pady=(10, 0))
+
+        tk.Label(
+            download_frame,
+            text="📥 结果文件已生成，点击下方按钮下载",
+            font=self.default_font,
+            bg=self.colors['success'],
+            fg='white'
+        ).pack(side=tk.LEFT, padx=10)
+
         self.download_btn = tk.Button(
-            result_frame,
-            text="📥 下载结果文件",
+            download_frame,
+            text="⬇️ 下载结果文件到本地",
             command=self.download_result,
-            bg=self.colors['primary'],
-            fg='white',
-            relief=tk.FLAT,
-            padx=15,
-            pady=5,
+            bg=self.colors['success'],
+            fg='#333',
+            activebackground='#43a047',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=25,
+            pady=10,
+            cursor='hand2',
             state=tk.DISABLED
         )
-        self.download_btn.pack(pady=5)
+        self.download_btn.pack(side=tk.RIGHT, padx=10)
 
     def create_history_tab(self):
         """创建历史记录标签页"""
@@ -337,38 +488,56 @@ class PhoneAgentGUI:
         search_frame = tk.Frame(self.history_frame)
         search_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Label(search_frame, text="🔍 搜索:").pack(side=tk.LEFT, padx=5)
-        self.search_entry = tk.Entry(search_frame, font=('Arial', 10), width=40)
+        tk.Label(search_frame, text="🔍 搜索:", font=self.default_font).pack(side=tk.LEFT, padx=5)
+        self.search_entry = tk.Entry(search_frame, font=self.default_font, width=40)
         self.search_entry.pack(side=tk.LEFT, padx=5)
 
         tk.Button(
             search_frame,
             text="搜索",
             command=self.search_history,
-            relief=tk.FLAT,
-            padx=15,
             bg=self.colors['info'],
-            fg='white'
+            fg='#333',
+            activebackground='#1976d2',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=8,
+            cursor='hand2'
         ).pack(side=tk.LEFT, padx=5)
 
         tk.Button(
             search_frame,
             text="🔄 刷新",
             command=self.load_history,
-            relief=tk.FLAT,
-            padx=15,
-            bg=self.colors['bg_light'],
-            fg=self.colors['text_dark']
+            bg='#e0e0e0',
+            fg='#333',
+            activebackground='#d0d0d0',
+            activeforeground='#333',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=8,
+            cursor='hand2'
         ).pack(side=tk.LEFT, padx=5)
 
         tk.Button(
             search_frame,
             text="🗑️ 清除历史",
             command=self.clear_history,
-            relief=tk.FLAT,
-            padx=15,
             bg=self.colors['error'],
-            fg='white'
+            fg='#333',
+            activebackground='#e53935',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=8,
+            cursor='hand2'
         ).pack(side=tk.RIGHT, padx=5)
 
         # 历史记录表格
@@ -412,14 +581,14 @@ class PhoneAgentGUI:
             frame = tk.Frame(stats_container, bg=self.colors['bg_light'], relief=tk.RAISED, bd=2)
             frame.grid(row=row, column=col, padx=10, pady=10, sticky='nsew')
 
-            label = tk.Label(frame, text=label_text, font=('Arial', 12), bg=self.colors['bg_light'])
+            label = tk.Label(frame, text=label_text, font=self.default_font, bg=self.colors['bg_light'])
             label.pack(pady=(10, 5))
 
             var = tk.StringVar(value='-')
             value_label = tk.Label(
                 frame,
                 textvariable=var,
-                font=('Arial', 24, 'bold'),
+                font=('PingFang SC', 28, 'bold') if sys.platform == 'darwin' else ('Microsoft YaHei', 28, 'bold'),
                 fg=self.colors['primary'],
                 bg=self.colors['bg_light']
             )
@@ -438,10 +607,15 @@ class PhoneAgentGUI:
             text="🔄 刷新统计",
             command=self.refresh_stats,
             bg=self.colors['primary'],
-            fg='white',
-            relief=tk.FLAT,
-            padx=20,
-            pady=10
+            fg='#333',
+            activebackground='#5566cc',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=25,
+            pady=12,
+            cursor='hand2'
         ).pack(pady=20)
 
     def check_server_status(self):
@@ -511,11 +685,11 @@ class PhoneAgentGUI:
         device_window.resizable(False, False)
 
         # 连接设备区域
-        connect_frame = tk.LabelFrame(device_window, text="连接远程设备", padx=10, pady=10)
+        connect_frame = tk.LabelFrame(device_window, text="连接远程设备", padx=10, pady=10, font=self.heading_font)
         connect_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        tk.Label(connect_frame, text="设备地址:").grid(row=0, column=0, padx=5, pady=5)
-        address_entry = tk.Entry(connect_frame, width=30, font=('Arial', 10))
+        tk.Label(connect_frame, text="设备地址:", font=self.default_font).grid(row=0, column=0, padx=5, pady=5)
+        address_entry = tk.Entry(connect_frame, font=self.default_font, width=30)
         address_entry.grid(row=0, column=1, padx=5, pady=5)
         address_entry.insert(0, "192.168.1.100:5555")
 
@@ -544,17 +718,22 @@ class PhoneAgentGUI:
             text="连接",
             command=connect_device,
             bg=self.colors['primary'],
-            fg='white',
-            relief=tk.FLAT,
-            padx=15,
-            pady=5
+            fg='#333',
+            activebackground='#5566cc',
+            activeforeground='white',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=8,
+            cursor='hand2'
         ).grid(row=0, column=2, padx=10, pady=5)
 
         # 设备列表
-        list_frame = tk.LabelFrame(device_window, text="已连接设备", padx=10, pady=10)
+        list_frame = tk.LabelFrame(device_window, text="已连接设备", padx=10, pady=10, font=self.heading_font)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        device_listbox = tk.Listbox(list_frame, font=('Arial', 10), height=10)
+        device_listbox = tk.Listbox(list_frame, font=self.default_font, height=10)
         device_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=device_listbox.yview)
@@ -593,10 +772,16 @@ class PhoneAgentGUI:
             device_window,
             text="🔄 刷新设备列表",
             command=refresh_devices,
-            bg=self.colors['bg_light'],
-            relief=tk.FLAT,
-            padx=15,
-            pady=8
+            bg='#e0e0e0',
+            fg='#333',
+            activebackground='#d0d0d0',
+            activeforeground='#333',
+            relief=tk.RAISED,
+            bd=3,
+            font=self.button_font,
+            padx=20,
+            pady=10,
+            cursor='hand2'
         )
         refresh_btn.pack(pady=10)
 
@@ -609,7 +794,7 @@ class PhoneAgentGUI:
             messagebox.showwarning("警告", "请输入任务描述")
             return
 
-        self.execute_btn.config(state=tk.DISABLED, text="执行中...")
+        self.execute_btn.config(state=tk.DISABLED)
         self.task_result.delete('1.0', tk.END)
         self.task_result.insert('1.0', "任务执行中，请稍候...")
 
@@ -636,7 +821,7 @@ class PhoneAgentGUI:
                 self.root.after(0, lambda: self.task_result.delete('1.0', tk.END))
                 self.root.after(0, lambda: self.task_result.insert('1.0', f"请求失败:\n{str(e)}"))
             finally:
-                self.root.after(0, lambda: self.execute_btn.config(state=tk.NORMAL, text="▶️ 执行任务"))
+                self.root.after(0, lambda: self.execute_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run_task, daemon=True).start()
 
@@ -711,7 +896,7 @@ class PhoneAgentGUI:
             messagebox.showwarning("警告", "请输入任务模板")
             return
 
-        self.execute_batch_btn.config(state=tk.DISABLED, text="执行中...")
+        self.execute_batch_btn.config(state=tk.DISABLED)
         self.batch_result.delete('1.0', tk.END)
         self.batch_result.insert('1.0', "正在上传文件，请稍候...")
         self.download_btn.config(state=tk.DISABLED)
@@ -727,7 +912,7 @@ class PhoneAgentGUI:
                     if not data.get('success'):
                         self.root.after(0, lambda: self.batch_result.delete('1.0', tk.END))
                         self.root.after(0, lambda: self.batch_result.insert('1.0', f"上传失败:\n{data.get('error', '未知错误')}"))
-                        self.root.after(0, lambda: self.execute_batch_btn.config(state=tk.NORMAL, text="▶️ 开始执行"))
+                        self.root.after(0, lambda: self.execute_batch_btn.config(state=tk.NORMAL))
                         return
 
                     file_path = data['file_path']
@@ -779,7 +964,7 @@ class PhoneAgentGUI:
                 self.root.after(0, lambda: self.batch_result.delete('1.0', tk.END))
                 self.root.after(0, lambda: self.batch_result.insert('1.0', f"请求失败:\n{str(e)}"))
             finally:
-                self.root.after(0, lambda: self.execute_batch_btn.config(state=tk.NORMAL, text="▶️ 开始执行"))
+                self.root.after(0, lambda: self.execute_batch_btn.config(state=tk.NORMAL))
 
         threading.Thread(target=run_batch, daemon=True).start()
 
@@ -803,14 +988,19 @@ class PhoneAgentGUI:
                 if response.status_code == 200:
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
-                    messagebox.showinfo("成功", f"文件已保存到:\n{file_path}")
+                    messagebox.showinfo("✅ 下载成功", f"文件已保存到:\n{file_path}")
                     # 询问是否打开文件
                     if messagebox.askyesno("提示", "是否打开结果文件？"):
-                        os.startfile(file_path) if os.name == 'nt' else os.system(f'open "{file_path}"')
+                        if os.name == 'nt':
+                            os.startfile(file_path)
+                        elif sys.platform == 'darwin':
+                            os.system(f'open "{file_path}"')
+                        else:
+                            os.system(f'xdg-open "{file_path}"')
                 else:
-                    messagebox.showerror("错误", "下载失败")
+                    messagebox.showerror("❌ 下载失败", "无法从服务器下载文件")
         except Exception as e:
-            messagebox.showerror("错误", f"下载失败：{str(e)}")
+            messagebox.showerror("❌ 下载失败", f"错误：{str(e)}")
 
     def load_history(self):
         """加载历史记录"""
