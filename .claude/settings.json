@@ -87,11 +87,20 @@
       "Bash(ls -la /Volumes/data/python/AutoPhone/*.xlsx)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(python -m py_compile phone_agent/agent.py phone_agent/config/manager.py server.py main.py bin/excel_task.py phone_agent/batch_runner.py)"
+      "Bash(python -m py_compile phone_agent/agent.py phone_agent/config/manager.py server.py main.py bin/excel_task.py phone_agent/batch_runner.py)",
+      "Bash(curl -s http://localhost:5001/health)",
+      "Bash(curl -s http://localhost:5001/devices)",
+      "Bash(python -c \"import requests; r = requests.get\\(''http://localhost:5001/health''\\); print\\(''Server response:'', r.json\\(\\)\\)\")",
+      "Bash(chmod +x /Volumes/data/python/AutoPhone/start.py)",
+      "Bash(python -m py_compile /Volumes/data/python/AutoPhone/server.py)",
+      "Bash(python -m py_compile /Volumes/data/python/AutoPhone/gui_app.py)",
+      "Bash(python -m py_compile /Volumes/data/python/AutoPhone/start.py)",
+      "Bash(ls -la /Volumes/data/python/AutoPhone/*.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\84857\\.claude\\plans",
-      "e:\\Python\\AutoPhone\\phone_agent"
+      "e:\\Python\\AutoPhone\\phone_agent",
+      "/Volumes/data/python/AutoPhone/templates"
     ]
   }
 }

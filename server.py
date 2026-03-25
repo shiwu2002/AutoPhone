@@ -36,7 +36,7 @@ CONFIG_PATH = Path(__file__).parent / "config.json"
 
 # ============== Flask 应用初始化 ==============
 
-app = Flask(__name__, static_folder='templates', static_url_path='')
+app = Flask(__name__)
 
 # 配置最大上传大小
 app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_SIZE
@@ -122,13 +122,6 @@ def cleanup_old_files(max_age_hours: int = 24) -> int:
 def health_check():
     """健康检查端点（无需认证）。"""
     return jsonify({'status': 'healthy', 'message': 'Server is running'})
-
-
-@app.route('/', methods=['GET'])
-def index():
-    """返回主页。"""
-    from flask import send_from_directory
-    return send_from_directory('templates', 'index.html')
 
 
 @app.route('/devices', methods=['GET'])
@@ -557,6 +550,36 @@ def excel_preview():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============== 文件下载 ==============
+
+@app.route('/download', methods=['GET'])
+@require_auth
+def download_file():
+    """下载文件端点，支持批量任务结果文件下载。"""
+    try:
+        file_path = request.args.get('file', '')
+        if not file_path:
+            return jsonify({'success': False, 'error': '缺少文件路径参数'}), 400
+
+        path = Path(file_path)
+        if not path.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+
+        if not path.is_file():
+            return jsonify({'success': False, 'error': '不是有效文件'}), 400
+
+        # 发送文件
+        from flask import send_file
+        return send_file(
+            path,
+            as_attachment=True,
+            download_name=path.name,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if path.suffix == '.xlsx' else 'application/octet-stream'
+        )
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============== 错误处理 ==============
 
 @app.errorhandler(413)
@@ -574,6 +597,11 @@ def internal_error(e):
 # ============== 主程序 ==============
 
 if __name__ == '__main__':
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
     print("=" * 50)
     print("Phone Agent HTTP Server (安全增强版)")
     print("=" * 50)
@@ -591,6 +619,7 @@ if __name__ == '__main__':
     print("  POST /upload           - File upload (max 100MB, auto-cleanup)")
     print("  POST /excel/batch      - Excel batch execution")
     print("  POST /excel/preview    - Preview Excel content")
+    print("  GET  /download         - Download file (for batch results)")
     print("  GET  /config           - Get configuration")
     print("  POST /config           - Update configuration")
     print("  GET  /history          - Get task history")
@@ -598,4 +627,24 @@ if __name__ == '__main__':
     print("  GET  /history/search   - Search history")
     print("=" * 50)
 
-    app.run(host=server_config.host, port=server_config.port, debug=False)
+    # 启动服务器（在后台线程中运行，以便主线程可以启动 GUI）
+    import threading
+
+    def run_server():
+        app.run(host=server_config.host, port=server_config.port, debug=False, use_reloader=False)
+
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
+    # 等待服务器启动
+    time.sleep(2)
+
+    # 启动 GUI 界面
+    print("正在启动 GUI 界面...")
+    gui_script = Path(__file__).parent / "gui_app.py"
+    if gui_script.exists():
+        subprocess.Popen([sys.executable, str(gui_script)])
+
+    # 保持主线程运行
+    while True:
+        time.sleep(1)
