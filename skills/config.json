@@ -1,0 +1,9 @@
+{
+  "model": {
+    "provider": "local",
+    "local": {
+      "model": "qwen3.5:4b",
+      "base_url": "http://localhost:11434/v1"
+    }
+  }
+}

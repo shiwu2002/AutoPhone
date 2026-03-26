@@ -6,11 +6,9 @@ PhoneAgent Tools Skill - 主技能执行逻辑
 - 模型配置管理
 - 任务执行
 - 历史记录查询
-- Excel 批量处理
 """
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -26,13 +24,6 @@ try:
 except ImportError:
     PHONE_AGENT_AVAILABLE = False
     print("Warning: PhoneAgent modules not available, some features will be limited")
-
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-    print("Warning: pandas not available, Excel features will be limited")
 
 
 def _load_config() -> dict:
@@ -106,30 +97,18 @@ def _build_agent_config(config: dict, override: dict = None) -> Optional['AgentC
 def adb_connect_execute(connection_request: str, device_address: str = None) -> dict:
     """
     ADB 设备连接技能执行函数
-
-    Args:
-        connection_request: 连接请求描述
-        device_address: 设备地址（无线连接时使用）
-
-    Returns:
-        dict: 连接结果
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         conn = ADBConnection()
 
-        # 如果需要连接远程设备
         if device_address:
             success, message = conn.connect(device_address)
             if not success:
                 return {"success": False, "error": message}
 
-        # 获取设备列表
         devices = get_device_factory().list_devices()
 
         if not devices:
@@ -154,28 +133,16 @@ def adb_connect_execute(connection_request: str, device_address: str = None) -> 
 def adb_disconnect_execute(device_address: str = None) -> dict:
     """
     ADB 设备断开技能执行函数
-
-    Args:
-        device_address: 设备地址（可选，不填则断开所有）
-
-    Returns:
-        dict: 断开结果
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         conn = ADBConnection()
         address = device_address if device_address else 'all'
         success, message = conn.disconnect(address if address != 'all' else None)
 
-        return {
-            "success": success,
-            "message": message
-        }
+        return {"success": success, "message": message}
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -184,24 +151,14 @@ def adb_disconnect_execute(device_address: str = None) -> dict:
 def model_config_execute(current_config: str = None, config_request: str = None) -> dict:
     """
     模型配置管理技能执行函数
-
-    Args:
-        current_config: 当前配置 JSON 字符串
-        config_request: 配置请求描述
-
-    Returns:
-        dict: 配置结果
     """
     try:
         config = _load_config()
 
-        # 如果有新的配置请求，解析并更新
         if config_request:
             try:
-                # 尝试解析 JSON 格式的配置请求
                 new_config = json.loads(config_request)
 
-                # 更新模型配置
                 if 'provider' in new_config:
                     config['model'] = config.get('model', {})
                     config['model']['provider'] = new_config['provider']
@@ -224,7 +181,6 @@ def model_config_execute(current_config: str = None, config_request: str = None)
                         config['model'][provider] = {}
                     config['model'][provider]['api_key'] = new_config['api_key']
 
-                # 保存配置
                 if _save_config(config):
                     return {
                         "success": True,
@@ -241,7 +197,6 @@ def model_config_execute(current_config: str = None, config_request: str = None)
                     return {"success": False, "error": "保存配置失败"}
 
             except json.JSONDecodeError:
-                # 如果不是 JSON 格式，尝试解析自然语言请求
                 return {
                     "success": True,
                     "provider": config.get('model', {}).get('provider', 'local'),
@@ -251,7 +206,6 @@ def model_config_execute(current_config: str = None, config_request: str = None)
                     "message": f"配置请求已接收：{config_request}（需要更具体的配置参数）"
                 }
 
-        # 返回当前配置
         provider = config.get('model', {}).get('provider', 'local')
         provider_config = config.get('model', {}).get(provider, {})
 
@@ -276,27 +230,13 @@ def execute_task_execute(
 ) -> dict:
     """
     执行手机任务技能执行函数
-
-    Args:
-        task: 任务描述
-        model_provider: 模型提供商
-        model_name: 模型名称
-        device_id: 设备 ID
-        max_steps: 最大执行步数
-
-    Returns:
-        dict: 任务执行结果
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         config = _load_config()
 
-        # 构建覆盖配置
         override = {}
         if model_provider:
             override['provider'] = model_provider
@@ -315,12 +255,10 @@ def execute_task_execute(
         if max_steps:
             agent_config.max_steps = max_steps
 
-        # 检查设备
         devices = get_device_factory().list_devices()
         if not devices:
             return {"success": False, "error": "没有可用的 ADB 设备"}
 
-        # 创建并执行任务
         agent = PhoneAgent(model_config=model_config, agent_config=agent_config)
         result = agent.run(task)
 
@@ -342,21 +280,10 @@ def query_history_execute(
 ) -> dict:
     """
     查询历史记录技能执行函数
-
-    Args:
-        limit: 返回记录数量限制
-        success_filter: 成功状态过滤（true/false/all）
-        keyword: 搜索关键词
-
-    Returns:
-        dict: 历史记录列表
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         history_mgr = get_history_manager()
 
@@ -369,7 +296,6 @@ def query_history_execute(
         else:
             records = history_mgr.get_all_records(limit=limit)
 
-        # 转换为字典格式
         records_list = []
         for record in records:
             record_dict = record.to_dict()
@@ -393,24 +319,15 @@ def query_history_execute(
 def get_stats_execute() -> dict:
     """
     获取统计信息技能执行函数
-
-    Returns:
-        dict: 统计信息
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         history_mgr = get_history_manager()
         stats = history_mgr.get_statistics()
 
-        return {
-            "success": True,
-            "statistics": stats
-        }
+        return {"success": True, "statistics": stats}
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -419,24 +336,15 @@ def get_stats_execute() -> dict:
 def clear_history_execute() -> dict:
     """
     清空历史记录技能执行函数
-
-    Returns:
-        dict: 清空结果
     """
     try:
         if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
+            return {"success": False, "error": "PhoneAgent modules not available"}
 
         history_mgr = get_history_manager()
 
         if history_mgr.clear_all():
-            return {
-                "success": True,
-                "message": "所有历史记录已清空"
-            }
+            return {"success": True, "message": "所有历史记录已清空"}
         else:
             return {"success": False, "error": "清空历史记录失败"}
 
@@ -444,141 +352,7 @@ def clear_history_execute() -> dict:
         return {"success": False, "error": str(e)}
 
 
-def excel_preview_execute(file_path: str, question_column: str = None) -> dict:
-    """
-    Excel 文件预览技能执行函数
-
-    Args:
-        file_path: Excel 文件路径
-        question_column: 问题列名（可选）
-
-    Returns:
-        dict: Excel 预览信息
-    """
-    try:
-        if not PANDAS_AVAILABLE:
-            return {
-                "success": False,
-                "error": "pandas not available"
-            }
-
-        path = Path(file_path)
-        if not path.exists():
-            return {"success": False, "error": f"文件不存在：{file_path}"}
-
-        df = pd.read_excel(path)
-        columns = df.columns.tolist()
-
-        # 自动检测问题列
-        if not question_column:
-            for col in columns:
-                col_lower = col.lower()
-                if '问题' in col_lower or 'question' in col_lower:
-                    question_column = col
-                    break
-            if not question_column:
-                question_column = columns[0] if columns else None
-
-        if not question_column:
-            return {"success": False, "error": "无法确定问题列"}
-
-        questions = df[question_column].dropna().astype(str).tolist()
-        questions = [q.strip() for q in questions if q.strip() and q != 'nan']
-
-        return {
-            "success": True,
-            "columns": columns,
-            "question_column": question_column,
-            "questions": questions,
-            "count": len(questions)
-        }
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-def excel_batch_execute(
-    file_path: str,
-    task_template: str,
-    output_file: str = None,
-    embed_screenshot: bool = False,
-    column: str = None
-) -> dict:
-    """
-    Excel 批量任务执行技能执行函数
-
-    Args:
-        file_path: Excel 文件路径
-        task_template: 任务模板描述
-        output_file: 输出文件路径
-        embed_screenshot: 是否嵌入截图
-        column: 问题列名
-
-    Returns:
-        dict: 批量执行结果
-    """
-    try:
-        if not PHONE_AGENT_AVAILABLE:
-            return {
-                "success": False,
-                "error": "PhoneAgent modules not available"
-            }
-
-        if not PANDAS_AVAILABLE:
-            return {"success": False, "error": "pandas not available"}
-
-        # 导入 Excel 批量处理函数
-        try:
-            from bin.excel_task import process_excel_questions
-        except ImportError:
-            return {"success": False, "error": "Excel batch processing module not available"}
-
-        config = _load_config()
-        model_cfg = _build_model_config(config)
-        agent_cfg = _build_agent_config(config)
-
-        output_path = output_file or file_path
-
-        results = process_excel_questions(
-            excel_path=file_path,
-            task_template=task_template,
-            output_path=output_path,
-            model_cfg=model_cfg,
-            agent_cfg=agent_cfg,
-            embed_screenshot=embed_screenshot,
-            column=column
-        )
-
-        # 转换结果格式
-        formatted_results = []
-        success_count = 0
-        for r in results:
-            formatted_results.append({
-                "question": r.get('question', ''),
-                "answer": r.get('answer', ''),
-                "success": r.get('success', False)
-            })
-            if r.get('success', False):
-                success_count += 1
-
-        return {
-            "success": True,
-            "results": formatted_results,
-            "output_file": output_path,
-            "statistics": {
-                "total": len(results),
-                "success": success_count,
-                "failed": len(results) - success_count
-            }
-        }
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "error": str(e)}
-
-
-# 主执行函数，根据 sub_skill_id 分发到不同的执行函数
+# 主执行函数
 def execute(sub_skill_id: str, **kwargs) -> dict:
     """
     PhoneAgent Tools 主执行函数
@@ -598,8 +372,6 @@ def execute(sub_skill_id: str, **kwargs) -> dict:
         "query_history": query_history_execute,
         "get_stats": get_stats_execute,
         "clear_history": clear_history_execute,
-        "excel_preview": excel_preview_execute,
-        "excel_batch": excel_batch_execute,
     }
 
     if sub_skill_id not in executors:

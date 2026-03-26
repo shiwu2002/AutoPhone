@@ -60,16 +60,21 @@ class SkillBook:
 class SkillManager:
     """技能管理器"""
 
-    def __init__(self, config_path: str = None):
+    # 公开的技能书列表（只暴露这些给用户）
+    PUBLIC_BOOKS = ["qa_skills", "agent_config"]
+
+    def __init__(self, config_path: str = None, public_only: bool = True):
         """
         初始化技能管理器
 
         Args:
             config_path: skill_books.json 文件路径
+            public_only: 是否只加载公开的技能书
         """
         if config_path is None:
             config_path = Path(__file__).parent.parent / "skill_books.json"
         self.config_path = Path(config_path)
+        self.public_only = public_only
         self.books: dict[str, SkillBook] = {}
         self.sub_skills: dict[str, SubSkill] = {}
         self._load_config()
@@ -146,9 +151,18 @@ class SkillManager:
             max_steps=data.get('max_steps', 10)
         )
 
-    def list_books(self) -> list[str]:
+    def list_books(self, public_only: bool = None) -> list[str]:
         """列出所有技能书 ID"""
+        if public_only is None:
+            public_only = self.public_only
+
+        if public_only:
+            return [bid for bid in self.books.keys() if bid in self.PUBLIC_BOOKS]
         return list(self.books.keys())
+
+    def list_public_books(self) -> list[str]:
+        """列出公开的技能书 ID"""
+        return self.list_books(public_only=True)
 
     def get_book(self, book_id: str) -> Optional[SkillBook]:
         """获取技能书"""

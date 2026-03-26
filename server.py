@@ -450,13 +450,13 @@ except ImportError:
 
 @app.route('/skills/books', methods=['GET'])
 def list_skill_books():
-    """列出所有技能书"""
+    """列出所有公开的技能书（只暴露 qa_skills 和 agent_config）"""
     try:
         if not SKILLS_ENGINE_AVAILABLE:
             return jsonify({'success': False, 'error': 'Skills engine not available'}), 500
 
         manager = get_skill_manager()
-        books = manager.list_books()
+        books = manager.list_public_books()  # 只返回公开的技能书
 
         books_info = []
         for book_id in books:
