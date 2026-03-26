@@ -436,6 +436,190 @@ def excel_preview():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==========================================
+# Skills API - 技能系统端点
+# ==========================================
+
+try:
+    from mainAgent.skill_engine import get_manager as get_skill_manager
+    SKILLS_ENGINE_AVAILABLE = True
+except ImportError:
+    SKILLS_ENGINE_AVAILABLE = False
+    print("Warning: Skills engine not available")
+
+
+@app.route('/skills/books', methods=['GET'])
+def list_skill_books():
+    """列出所有技能书"""
+    try:
+        if not SKILLS_ENGINE_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Skills engine not available'}), 500
+
+        manager = get_skill_manager()
+        books = manager.list_books()
+
+        books_info = []
+        for book_id in books:
+            book = manager.get_book(book_id)
+            if book:
+                books_info.append({
+                    'id': book.id,
+                    'name': book.name,
+                    'description': book.description,
+                    'icon': book.icon,
+                    'version': book.version,
+                    'sub_skills': [
+                        {
+                            'id': sk.id,
+                            'name': sk.name,
+                            'description': sk.description
+                        }
+                        for sk in book.sub_skills
+                    ]
+                })
+
+        return jsonify({
+            'success': True,
+            'count': len(books_info),
+            'books': books_info
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/book/<book_id>', methods=['GET'])
+def get_skill_book(book_id: str):
+    """获取技能书详情"""
+    try:
+        if not SKILLS_ENGINE_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Skills engine not available'}), 500
+
+        manager = get_skill_manager()
+        book = manager.get_book(book_id)
+
+        if not book:
+            return jsonify({'success': False, 'error': f'Skill book not found: {book_id}'}), 404
+
+        return jsonify({
+            'success': True,
+            'book': {
+                'id': book.id,
+                'name': book.name,
+                'description': book.description,
+                'icon': book.icon,
+                'version': book.version,
+                'sub_skills': [
+                    {
+                        'id': sk.id,
+                        'name': sk.name,
+                        'description': sk.description,
+                        'prompt_template': sk.prompt_template,
+                        'input_params': [
+                            {
+                                'name': p.name,
+                                'type': p.type,
+                                'description': p.description,
+                                'required': p.required,
+                                'default': p.default
+                            }
+                            for p in sk.input_params
+                        ],
+                        'output_config': {
+                            'field': sk.output_config.field,
+                            'type': sk.output_config.type,
+                            'description': sk.output_config.description
+                        } if sk.output_config else None,
+                        'timeout': sk.timeout,
+                        'max_steps': sk.max_steps
+                    }
+                    for sk in book.sub_skills
+                ]
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/execute', methods=['POST'])
+def execute_skill():
+    """执行子技能"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+
+        data = request.get_json()
+        if not data or 'book_id' not in data or 'sub_skill_id' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: book_id, sub_skill_id'
+            }), 400
+
+        book_id = data['book_id']
+        sub_skill_id = data['sub_skill_id']
+        params = data.get('params', {})
+
+        if not SKILLS_ENGINE_AVAILABLE:
+            # Fallback: directly call skills/phoneagent_tools/skill.py
+            try:
+                from skills.phoneagent_tools.skill import execute as phoneagent_execute
+                result = phoneagent_execute(sub_skill_id, **params)
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        manager = get_skill_manager()
+
+        # 检查设备可用性（对于需要设备的技能）
+        if book_id == 'phoneagent_tools' and sub_skill_id in ['execute_task', 'adb_connect']:
+            success, error = check_device_available()
+            if not success and sub_skill_id == 'execute_task':
+                # execute_task 需要设备，但 adb_connect 不需要
+                pass  # 允许继续，因为这是连接技能
+
+        # 构建提示词并执行
+        result = manager.execute(book_id, sub_skill_id, **params)
+
+        return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/skills/build_prompt', methods=['POST'])
+def build_skill_prompt():
+    """构建技能提示词（用于测试和调试）"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'error': 'Request must be JSON'}), 400
+
+        data = request.get_json()
+        if not data or 'book_id' not in data or 'sub_skill_id' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: book_id, sub_skill_id'
+            }), 400
+
+        book_id = data['book_id']
+        sub_skill_id = data['sub_skill_id']
+        params = data.get('params', {})
+
+        if not SKILLS_ENGINE_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Skills engine not available'}), 500
+
+        manager = get_skill_manager()
+        prompt = manager.build_prompt(book_id, sub_skill_id, **params)
+
+        return jsonify({
+            'success': True,
+            'prompt': prompt
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("Phone Agent HTTP Server")
@@ -453,5 +637,10 @@ if __name__ == '__main__':
     print("  GET  /history     - Get task history")
     print("  GET  /history/stats - Get statistics")
     print("  GET  /history/search - Search history")
+    print("\nSkills API endpoints:")
+    print("  GET  /skills/books       - List all skill books")
+    print("  GET  /skills/book/<id>   - Get skill book details")
+    print("  POST /skills/execute     - Execute a sub-skill")
+    print("  POST /skills/build_prompt - Build skill prompt (debug)")
     print("=" * 50)
     app.run(host='0.0.0.0', port=5001, debug=False)

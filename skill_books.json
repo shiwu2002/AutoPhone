@@ -1,0 +1,443 @@
+{
+  "books": [
+    {
+      "id": "phoneagent_tools",
+      "name": "PhoneAgent 工具集",
+      "description": "PhoneAgent 核心功能技能集，包含 ADB 连接、模型配置、任务执行等功能",
+      "icon": "🤖",
+      "version": "1.0.0",
+      "sub_skills": [
+        {
+          "id": "adb_connect",
+          "name": "ADB 设备连接",
+          "description": "连接 ADB 设备，支持 USB 和无线连接",
+          "prompt_template": "你是一个 ADB 设备连接助手。\n\n任务：{connection_request}\n\n请按以下步骤操作：\n1. 检查当前已连接的设备列表\n2. 如果需要连接远程设备，使用 adb connect {device_address}\n3. 确认连接成功后返回设备信息\n\n返回 JSON 格式：\n{\"success\": true/false, \"device_id\": \"设备 ID\", \"device_model\": \"设备型号\", \"connection_type\": \"usb/wireless\", \"message\": \"连接状态信息\"}",
+          "input_params": [
+            {
+              "name": "connection_request",
+              "type": "str",
+              "description": "连接请求描述",
+              "required": true
+            },
+            {
+              "name": "device_address",
+              "type": "str",
+              "description": "设备地址（无线连接时使用，格式：IP:端口）",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "device_info",
+            "type": "json",
+            "description": "设备连接信息"
+          },
+          "timeout": 30,
+          "max_steps": 5
+        },
+        {
+          "id": "adb_disconnect",
+          "name": "ADB 设备断开",
+          "description": "断开 ADB 设备连接",
+          "prompt_template": "你是一个 ADB 设备断开助手。\n\n任务：断开设备连接\n设备地址：{device_address}\n\n请按以下步骤操作：\n1. 断开指定的设备连接\n2. 确认设备已断开\n\n返回 JSON 格式：\n{\"success\": true/false, \"message\": \"断开状态信息\"}",
+          "input_params": [
+            {
+              "name": "device_address",
+              "type": "str",
+              "description": "设备地址（可选，不填则断开所有）",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "disconnect_result",
+            "type": "json",
+            "description": "断开连接结果"
+          },
+          "timeout": 20,
+          "max_steps": 3
+        },
+        {
+          "id": "model_config",
+          "name": "模型配置管理",
+          "description": "配置和管理 AI 模型参数",
+          "prompt_template": "你是一个模型配置管理助手。\n\n当前配置：{current_config}\n\n用户请求：{config_request}\n\n请帮助完成以下配置：\n1. 选择模型提供商（local/openai/anthropic）\n2. 配置模型参数（base_url, model, api_key）\n3. 配置 Agent 参数（max_steps, device_id, lang, verbose）\n\n返回 JSON 格式：\n{\"success\": true/false, \"provider\": \"模型提供商\", \"model_name\": \"模型名称\", \"base_url\": \"API 地址\", \"message\": \"配置结果信息\"}",
+          "input_params": [
+            {
+              "name": "current_config",
+              "type": "str",
+              "description": "当前配置 JSON 字符串",
+              "required": false
+            },
+            {
+              "name": "config_request",
+              "type": "str",
+              "description": "配置请求描述",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "config_result",
+            "type": "json",
+            "description": "配置结果"
+          },
+          "timeout": 30,
+          "max_steps": 5
+        },
+        {
+          "id": "execute_task",
+          "name": "执行手机任务",
+          "description": "在手机上执行自动化任务",
+          "prompt_template": "你是一个手机自动化执行助手。\n\n任务描述：{task}\n\n执行配置：\n- 模型：{model_provider} / {model_name}\n- 设备：{device_id}\n- 最大步数：{max_steps}\n\n请执行以下任务：\n1. 分析任务需求\n2. 通过 VLM 分析屏幕内容\n3. 生成并执行动作序列（tap, swipe, input 等）\n4. 持续执行直到任务完成或达到最大步数\n\n返回 JSON 格式：\n{\"success\": true/false, \"result\": \"任务执行结果\", \"steps_executed\": 执行的步数，\"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "task",
+              "type": "str",
+              "description": "任务描述",
+              "required": true
+            },
+            {
+              "name": "model_provider",
+              "type": "str",
+              "description": "模型提供商",
+              "required": false,
+              "default": "local"
+            },
+            {
+              "name": "model_name",
+              "type": "str",
+              "description": "模型名称",
+              "required": false,
+              "default": "qwen3.5:4b"
+            },
+            {
+              "name": "device_id",
+              "type": "str",
+              "description": "设备 ID",
+              "required": false
+            },
+            {
+              "name": "max_steps",
+              "type": "int",
+              "description": "最大执行步数",
+              "required": false,
+              "default": 100
+            }
+          ],
+          "output_config": {
+            "field": "task_result",
+            "type": "json",
+            "description": "任务执行结果"
+          },
+          "timeout": 300,
+          "max_steps": 100
+        },
+        {
+          "id": "query_history",
+          "name": "查询历史记录",
+          "description": "查询任务执行历史记录",
+          "prompt_template": "你是一个历史记录查询助手。\n\n查询条件：\n- 限制数量：{limit}\n- 成功状态：{success_filter}\n- 搜索关键词：{keyword}\n\n请查询符合条件的历史记录。\n\n返回 JSON 格式：\n{\"success\": true/false, \"count\": 记录数量，\"records\": [{\"task\": \"任务描述\", \"success\": true/false, \"timestamp\": \"时间戳\", \"steps\": 步数}]}",
+          "input_params": [
+            {
+              "name": "limit",
+              "type": "int",
+              "description": "返回记录数量限制",
+              "required": false,
+              "default": 100
+            },
+            {
+              "name": "success_filter",
+              "type": "str",
+              "description": "成功状态过滤（true/false/all）",
+              "required": false,
+              "default": "all"
+            },
+            {
+              "name": "keyword",
+              "type": "str",
+              "description": "搜索关键词",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "history_records",
+            "type": "json",
+            "description": "历史记录列表"
+          },
+          "timeout": 30,
+          "max_steps": 3
+        },
+        {
+          "id": "get_stats",
+          "name": "获取统计信息",
+          "description": "获取任务执行的统计信息",
+          "prompt_template": "你是一个统计信息助手。\n\n请获取任务执行的统计信息，包括：\n- 总任务数\n- 成功任务数\n- 失败任务数\n- 成功率\n\n返回 JSON 格式：\n{\"success\": true/false, \"statistics\": {\"total\": 总任务数，\"success\": 成功数，\"failed\": 失败数，\"success_rate\": 成功率}}",
+          "input_params": [],
+          "output_config": {
+            "field": "statistics",
+            "type": "json",
+            "description": "统计信息"
+          },
+          "timeout": 20,
+          "max_steps": 2
+        },
+        {
+          "id": "clear_history",
+          "name": "清空历史记录",
+          "description": "清空所有任务历史记录",
+          "prompt_template": "你是一个历史记录管理助手。\n\n任务：清空所有历史记录\n\n请确认用户意图后执行清空操作。\n\n返回 JSON 格式：\n{\"success\": true/false, \"message\": \"操作结果信息\"}",
+          "input_params": [],
+          "output_config": {
+            "field": "clear_result",
+            "type": "json",
+            "description": "清空结果"
+          },
+          "timeout": 20,
+          "max_steps": 2
+        },
+        {
+          "id": "excel_preview",
+          "name": "Excel 文件预览",
+          "description": "预览 Excel 文件内容和列信息",
+          "prompt_template": "你是一个 Excel 文件预览助手。\n\n文件路径：{file_path}\n问题列：{question_column}\n\n请预览 Excel 文件内容：\n1. 读取 Excel 文件\n2. 获取所有列名\n3. 提取问题列的问题列表\n\n返回 JSON 格式：\n{\"success\": true/false, \"columns\": [\"列名 1\", \"列名 2\", ...], \"question_column\": \"问题列名\", \"questions\": [\"问题 1\", \"问题 2\", ...], \"count\": 问题数量}",
+          "input_params": [
+            {
+              "name": "file_path",
+              "type": "str",
+              "description": "Excel 文件路径",
+              "required": true
+            },
+            {
+              "name": "question_column",
+              "type": "str",
+              "description": "问题列名（可选，自动检测包含'问题'或'question'的列）",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "excel_preview",
+            "type": "json",
+            "description": "Excel 预览信息"
+          },
+          "timeout": 30,
+          "max_steps": 3
+        },
+        {
+          "id": "excel_batch",
+          "name": "Excel 批量任务",
+          "description": "批量执行 Excel 中的任务",
+          "prompt_template": "你是一个 Excel 批量任务执行助手。\n\n文件路径：{file_path}\n任务模板：{task_template}\n输出文件：{output_file}\n嵌入截图：{embed_screenshot}\n列名：{column}\n\n请执行以下操作：\n1. 读取 Excel 文件中的问题列表\n2. 对每个问题执行任务模板描述的操作\n3. 将结果写入输出文件\n\n返回 JSON 格式：\n{\"success\": true/false, \"results\": [{\"question\": \"问题\", \"answer\": \"答案\", \"success\": true/false}], \"output_file\": \"输出文件路径\", \"statistics\": {\"total\": 总数，\"success\": 成功数，\"failed\": 失败数}}",
+          "input_params": [
+            {
+              "name": "file_path",
+              "type": "str",
+              "description": "Excel 文件路径",
+              "required": true
+            },
+            {
+              "name": "task_template",
+              "type": "str",
+              "description": "任务模板描述",
+              "required": true
+            },
+            {
+              "name": "output_file",
+              "type": "str",
+              "description": "输出文件路径",
+              "required": false
+            },
+            {
+              "name": "embed_screenshot",
+              "type": "bool",
+              "description": "是否嵌入截图",
+              "required": false,
+              "default": false
+            },
+            {
+              "name": "column",
+              "type": "str",
+              "description": "问题列名",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "batch_result",
+            "type": "json",
+            "description": "批量执行结果"
+          },
+          "timeout": 600,
+          "max_steps": 50
+        }
+      ]
+    },
+    {
+      "id": "liantong_service",
+      "name": "联通客服",
+      "description": "中国联通 APP 相关操作技能",
+      "icon": "📞",
+      "version": "1.0.0",
+      "sub_skills": [
+        {
+          "id": "query_ai_cs",
+          "name": "AI 客服问答",
+          "description": "通过联通 APP 的 AI 客服进行咨询问答",
+          "prompt_template": "你的任务是通过联通 APP 的 AI 客服来回答问题。\n\n问题：{question}\n\n流程：\n1. 检查是否已在 AI 对话界面，不在则点击右上角图标\n2. 将问题发送给 AI 客服\n3. 等待 AI 回复（超过 1 分钟则结束）\n4. 记录 AI 的原始回复内容\n\n返回 JSON 格式：\n{\"success\": true/false, \"answer\": \"AI 客服的回复内容\", \"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "question",
+              "type": "str",
+              "description": "要提问的问题",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "answer",
+            "type": "text",
+            "description": "AI 客服的回复内容"
+          },
+          "timeout": 90,
+          "max_steps": 15
+        }
+      ]
+    },
+    {
+      "id": "mobile_operations",
+      "name": "手机通用操作",
+      "description": "手机通用操作技能，如打开 APP、输入文字、滑动等",
+      "icon": "📱",
+      "version": "1.0.0",
+      "sub_skills": [
+        {
+          "id": "open_app",
+          "name": "打开应用",
+          "description": "打开指定的手机应用",
+          "prompt_template": "你的任务是打开指定的应用。\n\n应用名称：{app_name}\n\n流程：\n1. 使用 ADB 命令启动应用\n2. 确认应用已成功打开\n\n返回 JSON 格式：\n{\"success\": true/false, \"app_name\": \"应用名称\", \"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "app_name",
+              "type": "str",
+              "description": "应用名称",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "open_result",
+            "type": "json",
+            "description": "打开应用结果"
+          },
+          "timeout": 30,
+          "max_steps": 5
+        },
+        {
+          "id": "input_text",
+          "name": "输入文字",
+          "description": "在当前焦点的输入框中输入文字",
+          "prompt_template": "你的任务是在输入框中输入文字。\n\n要输入的内容：{text}\n\n流程：\n1. 点击输入框获取焦点\n2. 使用 ADB 输入文字\n3. 确认文字已成功输入\n\n返回 JSON 格式：\n{\"success\": true/false, \"text\": \"输入的文字\", \"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "text",
+              "type": "str",
+              "description": "要输入的文字内容",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "input_result",
+            "type": "json",
+            "description": "输入结果"
+          },
+          "timeout": 30,
+          "max_steps": 5
+        },
+        {
+          "id": "tap_coordinate",
+          "name": "点击坐标",
+          "description": "点击屏幕上的指定坐标",
+          "prompt_template": "你的任务是点击屏幕上的指定坐标。\n\n坐标位置：x={x}, y={y}\n\n流程：\n1. 使用 ADB 点击指定坐标\n2. 等待点击生效\n\n返回 JSON 格式：\n{\"success\": true/false, \"coordinate\": {\"x\": x 值，\"y\": y 值}, \"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "x",
+              "type": "int",
+              "description": "X 坐标",
+              "required": true
+            },
+            {
+              "name": "y",
+              "type": "int",
+              "description": "Y 坐标",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "tap_result",
+            "type": "json",
+            "description": "点击结果"
+          },
+          "timeout": 20,
+          "max_steps": 3
+        }
+      ]
+    },
+    {
+      "id": "excel_management",
+      "name": "Excel 管理",
+      "description": "Excel 文件操作和数据管理技能",
+      "icon": "📊",
+      "version": "1.0.0",
+      "sub_skills": [
+        {
+          "id": "read_excel",
+          "name": "读取 Excel",
+          "description": "读取 Excel 文件内容",
+          "prompt_template": "你的任务是读取 Excel 文件内容。\n\n文件路径：{file_path}\n工作表：{sheet_name}\n\n流程：\n1. 使用 pandas 读取 Excel 文件\n2. 返回列信息和数据\n\n返回 JSON 格式：\n{\"success\": true/false, \"columns\": [\"列名 1\", \"列名 2\", ...], \"data\": [...], \"row_count\": 行数}",
+          "input_params": [
+            {
+              "name": "file_path",
+              "type": "str",
+              "description": "Excel 文件路径",
+              "required": true
+            },
+            {
+              "name": "sheet_name",
+              "type": "str",
+              "description": "工作表名称",
+              "required": false
+            }
+          ],
+          "output_config": {
+            "field": "excel_data",
+            "type": "json",
+            "description": "Excel 数据"
+          },
+          "timeout": 30,
+          "max_steps": 3
+        },
+        {
+          "id": "write_excel",
+          "name": "写入 Excel",
+          "description": "将数据写入 Excel 文件",
+          "prompt_template": "你的任务是将数据写入 Excel 文件。\n\n文件路径：{file_path}\n数据：{data}\n\n流程：\n1. 准备数据\n2. 写入 Excel 文件\n3. 确认写入成功\n\n返回 JSON 格式：\n{\"success\": true/false, \"file_path\": \"文件路径\", \"row_count\": 写入行数，\"message\": \"执行状态信息\"}",
+          "input_params": [
+            {
+              "name": "file_path",
+              "type": "str",
+              "description": "Excel 文件路径",
+              "required": true
+            },
+            {
+              "name": "data",
+              "type": "str",
+              "description": "要写入的数据（JSON 格式）",
+              "required": true
+            }
+          ],
+          "output_config": {
+            "field": "write_result",
+            "type": "json",
+            "description": "写入结果"
+          },
+          "timeout": 30,
+          "max_steps": 3
+        }
+      ]
+    }
+  ]
+}

@@ -5,7 +5,8 @@
       "Bash(.venv\\\\Scripts\\\\python.exe -c \"from phone_agent.adb import list_devices; devices = list_devices\\(\\); print\\(f'Found {len\\(devices\\)} devices'\\); [print\\(f'  - {d.device_id} \\({d.status}\\)'\\) for d in devices]\")",
       "Bash(.venv/Scripts/python.exe -c \"from phone_agent.adb import list_devices; devices = list_devices\\(\\); print\\(f'Found {len\\(devices\\)} devices'\\); [print\\(f'  - {d.device_id} \\({d.status}\\)'\\) for d in devices]\")",
       "Bash(.venv/Scripts/python.exe main.py --list-devices)",
-      "Bash(.venv/Scripts/python.exe -c \"from phone_agent.device_factory import get_device_factory; df = get_device_factory\\(\\); devices = df.list_devices\\(\\); print\\('Devices:', len\\(devices\\)\\); [print\\(f'  - {d.device_id}'\\) for d in devices]\")"
+      "Bash(.venv/Scripts/python.exe -c \"from phone_agent.device_factory import get_device_factory; df = get_device_factory\\(\\); devices = df.list_devices\\(\\); print\\('Devices:', len\\(devices\\)\\); [print\\(f'  - {d.device_id}'\\) for d in devices]\")",
+      "Bash(python -c \"import dis; import marshal; f=open\\(''''mainAgent/__pycache__/skill_book.cpython-314.pyc'''',''''rb''''\\); f.read\\(16\\); code=marshal.load\\(f\\); dis.dis\\(code\\)\")"
     ]
   }
 }
