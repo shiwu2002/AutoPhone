@@ -1,30 +1,17 @@
 #!/usr/bin/env python3
-"""Phone Agent - AI 驱动的手机自动化
+"""
+Phone Agent API - 程序化接口
 
-Phone Agent 应用的主入口文件。
-提供程序化 API，支持多设备并行执行。
+为其他项目提供手机自动化功能的调用接口。
+支持多设备并行执行批量任务。
 """
 
-import sys
-from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
-# Windows 控制台 UTF-8 编码设置
-if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+from phone_agent import PhoneAgent, AgentConfig, ModelConfig
+from phone_agent.device_factory import DeviceType, set_device_factory
 
-from phone_agent import PhoneAgent
-from phone_agent.agent import AgentConfig
-from phone_agent.device_factory import DeviceType, set_device_type, get_device_factory
-from phone_agent.model import ModelConfig
-
-
-# ============================================================================
-# Programmatic API - For other projects to call
-# ============================================================================
 
 @dataclass
 class TaskResult:
@@ -56,15 +43,15 @@ class PhoneAgentAPI:
     支持多设备并行执行批量任务。
     
     示例:
-        >>> from main import PhoneAgentAPI, ModelConfig, AgentConfig
-        >>> 
+        >>> from phone_agent.api import PhoneAgentAPI, ModelConfig, AgentConfig
+        
         >>> # 初始化 API
         >>> api = PhoneAgentAPI()
-        >>> 
+        
         >>> # 单个任务
         >>> result = api.run_task("打开微信")
         >>> print(result.answer)
-        >>> 
+        
         >>> # 多设备并行批量任务
         >>> batch_result = api.run_batch_parallel(
         ...     questions=["问题 1", "问题 2", "问题 3"],
@@ -89,7 +76,7 @@ class PhoneAgentAPI:
             config_path: config.json 文件路径
         """
         # 全局设置设备类型
-        set_device_type(DeviceType.ADB)
+        set_device_factory(DeviceType.ADB)
         
         # 如果未提供配置，则从文件加载
         if model_config is None or agent_config is None:
@@ -124,6 +111,8 @@ class PhoneAgentAPI:
     def _load_config(self, config_path: str) -> dict:
         """从 JSON 文件加载配置。"""
         import json
+        from pathlib import Path
+        
         path = Path(config_path)
         if not path.exists():
             return {}
@@ -153,7 +142,7 @@ class PhoneAgentAPI:
             >>> result = api.run_task("打开微信并给张三发消息")
             >>> if result.success:
             ...     print(f"答案：{result.answer}")
-            >>> else:
+            ... else:
             ...     print(f"错误：{result.error}")
         """
         # 设置临时 verbose 模式
@@ -231,7 +220,7 @@ class PhoneAgentAPI:
             >>> print(f"总计：{result.total}")
             >>> print(f"成功：{result.success_count}")
             >>> print(f"耗时：{result.total_time:.2f}秒")
-            >>> 
+            
             >>> # 查看各设备的执行结果
             >>> for device_result in result.device_results:
             ...     print(f"设备 {device_result['device_id']}: {device_result['success_count']} 个成功")
@@ -279,79 +268,3 @@ class PhoneAgentAPI:
             output_file=None,
             total_time=parallel_result.total_time
         )
-
-
-# ============================================================================
-# Standalone Execution - For direct script usage
-# ============================================================================
-
-def main():
-    """独立执行的入口点。"""
-    print("Phone Agent API - 多设备并行执行")
-    print("=" * 60)
-    
-    # 初始化 API
-    api = PhoneAgentAPI()
-    
-    # 获取可用设备
-    devices = get_device_factory().list_devices()
-    print(f"\n可用设备数：{len(devices)}")
-    for device in devices:
-        print(f"  - {device.device_id}")
-    
-    if len(devices) == 0:
-        print("\n❌ 没有连接设备。请连接 ADB 设备。")
-        return
-    
-    # 演示：单个任务
-    print("\n" + "=" * 60)
-    print("演示：单个任务执行")
-    print("=" * 60)
-    
-    result = api.run_task("查看时间", verbose=False)
-    print(f"结果：{result.answer}")
-    
-    # 演示：多设备并行批量执行
-    if len(devices) > 1:
-        print("\n" + "=" * 60)
-        print("演示：多设备并行批量执行")
-        print("=" * 60)
-        
-        questions = [
-            "今天天气怎么样？",
-            "北京到上海的高铁要多久？",
-            "推荐几本好看的书",
-            "如何学习 Python？",
-            "世界上最大的海洋是哪个？"
-        ]
-        
-        batch_result = api.run_batch_parallel(
-            questions=questions,
-            task_template="请回答：{content}",
-            verbose=False
-        )
-        
-        print(f"\n📊 统计:")
-        print(f"  总问题数：{batch_result.total}")
-        print(f"  成功：{batch_result.success_count}")
-        print(f"  失败：{batch_result.failed_count}")
-        print(f"  总耗时：{batch_result.total_time:.2f}秒")
-        
-        print(f"\n📱 各设备结果:")
-        for dr in batch_result.device_results:
-            print(f"  设备 {dr['device_id']}: {dr['success_count']} 成功，{dr['failed_count']} 失败")
-        
-        print(f"\n✅ 详细结果 (前 3 个):")
-        for i, r in enumerate(batch_result.results[:3], 1):
-            status = "✅" if r.success else "❌"
-            print(f"  {i}. {status} {r.answer[:50] if r.answer else r.error}")
-    else:
-        print("\n⚠️  只有 1 个设备，无法演示并行执行。")
-    
-    print("\n" + "=" * 60)
-    print("更多示例请查看：examples/parallel_execution.py")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()

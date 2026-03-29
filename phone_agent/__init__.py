@@ -8,6 +8,7 @@ from phone_agent.agent import PhoneAgent, AgentConfig, StepResult
 from phone_agent.model import ModelConfig
 from phone_agent.history import TaskHistoryManager, get_history_manager
 from phone_agent.utils.logger import setup_logger
+from phone_agent.api import PhoneAgentAPI, TaskResult, ParallelBatchResult
 
 __version__ = '1.0.0'
 __author__ = 'Your Name'
@@ -19,4 +20,7 @@ __all__ = [
     'TaskHistoryManager',
     'get_history_manager',
     'setup_logger',
+    'PhoneAgentAPI',
+    'TaskResult',
+    'ParallelBatchResult',
 ]

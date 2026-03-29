@@ -14,7 +14,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from main import PhoneAgentAPI
+from phone_agent.api import PhoneAgentAPI
 
 
 def run_single_task(

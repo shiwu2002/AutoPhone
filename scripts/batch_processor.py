@@ -10,7 +10,7 @@ Excel 批量问答处理 - 多设备并行版
 import argparse
 import pandas as pd
 from pathlib import Path
-from main import PhoneAgentAPI
+from phone_agent.api import PhoneAgentAPI
 
 
 def process_excel(

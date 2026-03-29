@@ -195,7 +195,7 @@ pip install pandas openpyxl
 ## 核心代码（供参考）
 
 ```python
-from main import PhoneAgentAPI
+from phone_agent.api import PhoneAgentAPI
 import pandas as pd
 
 # 1. 读取 Excel
