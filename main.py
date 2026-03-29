@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Phone Agent - AI-powered phone automation
+"""Phone Agent - AI 驱动的手机自动化
 
-Main entry point for the Phone Agent application.
-Provides programmatic API with multi-device parallel execution support.
+Phone Agent 应用的主入口文件。
+提供程序化 API，支持多设备并行执行。
 """
 
 import sys
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
-# Set UTF-8 encoding for Windows console
+# Windows 控制台 UTF-8 编码设置
 if sys.platform == 'win32':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -28,50 +28,50 @@ from phone_agent.model import ModelConfig
 
 @dataclass
 class TaskResult:
-    """Task execution result."""
-    success: bool
-    answer: str
-    error: Optional[str] = None
-    steps: int = 0
-    screenshot_base64: Optional[str] = None
+    """单个任务执行结果。"""
+    success: bool  # 是否成功
+    answer: str  # 答案/结果
+    error: Optional[str] = None  # 错误信息
+    steps: int = 0  # 执行步数
+    screenshot_base64: Optional[str] = None  # 截图的 base64 数据
 
 
 @dataclass
 class ParallelBatchResult:
-    """Parallel batch task execution result."""
-    total: int
-    success_count: int
-    failed_count: int
-    device_results: List[Dict[str, Any]]  # Results per device
-    results: List[TaskResult]  # Merged results
-    output_file: Optional[str] = None
-    total_time: float = 0.0  # Total execution time in seconds
+    """多设备并行批量任务执行结果。"""
+    total: int  # 总问题数
+    success_count: int  # 成功数
+    failed_count: int  # 失败数
+    device_results: List[Dict[str, Any]]  # 各设备的详细结果
+    results: List[TaskResult]  # 合并后的结果（按原顺序）
+    output_file: Optional[str] = None  # 输出文件路径
+    total_time: float = 0.0  # 总耗时（秒）
 
 
 class PhoneAgentAPI:
     """
-    Phone Agent Programmatic Interface.
+    Phone Agent 程序化接口。
     
-    Provides methods for other projects to call phone automation features.
-    Supports multi-device parallel execution for batch tasks.
+    为其他项目提供调用手机自动化功能的方法。
+    支持多设备并行执行批量任务。
     
-    Example:
+    示例:
         >>> from main import PhoneAgentAPI, ModelConfig, AgentConfig
         >>> 
-        >>> # Initialize API
+        >>> # 初始化 API
         >>> api = PhoneAgentAPI()
         >>> 
-        >>> # Single task
+        >>> # 单个任务
         >>> result = api.run_task("打开微信")
         >>> print(result.answer)
         >>> 
-        >>> # Batch tasks with multi-device parallel
+        >>> # 多设备并行批量任务
         >>> batch_result = api.run_batch_parallel(
         ...     questions=["问题 1", "问题 2", "问题 3"],
         ...     task_template="请回答：{content}"
         ... )
-        >>> print(f"Success: {batch_result.success_count}/{batch_result.total}")
-        >>> print(f"Total time: {batch_result.total_time:.2f}s")
+        >>> print(f"成功：{batch_result.success_count}/{batch_result.total}")
+        >>> print(f"总耗时：{batch_result.total_time:.2f}秒")
     """
     
     def __init__(
@@ -81,17 +81,17 @@ class PhoneAgentAPI:
         config_path: str = "config.json"
     ):
         """
-        Initialize Phone Agent API.
+        初始化 Phone Agent API。
         
-        Args:
-            model_config: Model configuration. If None, loads from config_path
-            agent_config: Agent configuration. If None, loads from config_path
-            config_path: Path to config.json
+        参数:
+            model_config: 模型配置。如果为 None，则从 config_path 加载
+            agent_config: Agent 配置。如果为 None，则从 config_path 加载
+            config_path: config.json 文件路径
         """
-        # Set device type globally
+        # 全局设置设备类型
         set_device_type(DeviceType.ADB)
         
-        # Load configuration from file if not provided
+        # 如果未提供配置，则从文件加载
         if model_config is None or agent_config is None:
             config = self._load_config(config_path)
             
@@ -122,7 +122,7 @@ class PhoneAgentAPI:
         self.config_path = config_path
     
     def _load_config(self, config_path: str) -> dict:
-        """Load configuration from JSON file."""
+        """从 JSON 文件加载配置。"""
         import json
         path = Path(config_path)
         if not path.exists():
@@ -138,36 +138,39 @@ class PhoneAgentAPI:
         verbose: bool = False
     ) -> TaskResult:
         """
-        Run a single task on phone.
+        在手机上执行单个任务。
         
-        Args:
-            task: Task description in natural language
-            save_screenshot: Whether to save screenshot
-            verbose: Whether to show verbose output
+        参数:
+            task: 自然语言描述的任务
+            save_screenshot: 是否保存截图
+            verbose: 是否显示详细输出
             
-        Returns:
-            TaskResult with success status and answer
+        返回:
+            TaskResult 对象，包含执行状态和答案
             
-        Example:
+        示例:
             >>> api = PhoneAgentAPI()
             >>> result = api.run_task("打开微信并给张三发消息")
             >>> if result.success:
-            ...     print(f"Answer: {result.answer}")
+            ...     print(f"答案：{result.answer}")
             >>> else:
-            ...     print(f"Error: {result.error}")
+            ...     print(f"错误：{result.error}")
         """
-        # Create agent with temporary verbose setting
+        # 设置临时 verbose 模式
         original_verbose = self.agent_config.verbose
         self.agent_config.verbose = verbose or original_verbose
         
         try:
+            # 创建 Agent 实例
             agent = PhoneAgent(
                 model_config=self.model_config,
                 agent_config=self.agent_config,
             )
             
+            # 执行任务
             answer = agent.run(task)
             
+            # 获取截图（如果需要）
             screenshot_b64 = None
             if save_screenshot:
                 try:
@@ -175,7 +178,7 @@ class PhoneAgentAPI:
                     screenshot = get_device_factory().get_screenshot(enable_compression=False)
                     screenshot_b64 = screenshot.base64_data
                 except Exception as e:
-                    print(f"Warning: Failed to get screenshot: {e}")
+                    print(f"警告：获取截图失败：{e}")
             
             return TaskResult(
                 success=True,
@@ -194,127 +197,6 @@ class PhoneAgentAPI:
         finally:
             self.agent_config.verbose = original_verbose
     
-    def run_batch_from_file(
-        self,
-        file_path: str,
-        task_template: str,
-        output_path: Optional[str] = None,
-        column: Optional[str] = None,
-        embed_screenshot: bool = False,
-        compare_answer: bool = False,
-        max_questions: int = 0,
-        verbose: bool = False
-    ) -> BatchTaskResult:
-        """
-        Run batch tasks from Excel or TXT file.
-        
-        Args:
-            file_path: Path to Excel/TXT file containing questions
-            task_template: Task template, use {content} as placeholder
-            output_path: Output file path (default: input_results.xlsx)
-            column: Column name to read questions from (Excel only)
-            embed_screenshot: Whether to embed screenshots in Excel
-            compare_answer: Whether to compare with standard answers
-            max_questions: Max questions to process (0 = all)
-            verbose: Whether to show verbose output
-            
-        Returns:
-            BatchTaskResult with statistics and detailed results
-            
-        Example:
-            >>> api = PhoneAgentAPI()
-            >>> result = api.run_batch_from_file(
-            ...     file_path="questions.xlsx",
-            ...     task_template="请回答：{content}",
-            ...     embed_screenshot=True
-            ... )
-            >>> print(f"Total: {result.total}")
-            >>> print(f"Success: {result.success_count}")
-        """
-        # Import excel_task module
-        from bin.excel_task import (
-            process_excel_questions,
-            load_file_content,
-            PANDAS_AVAILABLE
-        )
-        
-        if not PANDAS_AVAILABLE and file_path.lower().endswith(('.xlsx', '.xls')):
-            return BatchTaskResult(
-                total=0,
-                success_count=0,
-                failed_count=0,
-                results=[],
-                output_file=None
-            )
-        
-        # Determine output file
-        if output_path is None:
-            input_path = Path(file_path)
-            output_path = str(input_path.parent / f"{input_path.stem}_results{input_path.suffix}")
-        
-        # Create temporary callback for progress tracking
-        def progress_callback(current: int, total: int, question: str):
-            print(f"\nProcessing {current}/{total}: {question[:50]}...")
-        
-        # Process questions
-        original_verbose = self.agent_config.verbose
-        self.agent_config.verbose = verbose or original_verbose
-        
-        try:
-            results = process_excel_questions(
-                excel_path=file_path,
-                task_template=task_template,
-                output_path=output_path,
-                model_cfg=self.model_config,
-                agent_cfg=self.agent_config,
-                embed_screenshot=embed_screenshot,
-                compare_answer=compare_answer,
-                column=column,
-                progress_callback=progress_callback
-            )
-            
-            # Convert to TaskResult list
-            task_results = []
-            success_count = 0
-            failed_count = 0
-            
-            for r in results:
-                if r.get('success', False):
-                    success_count += 1
-                    task_results.append(TaskResult(
-                        success=True,
-                        answer=r.get('answer', ''),
-                        steps=r.get('steps', 0),
-                        screenshot_base64=r.get('screenshot_base64')
-                    ))
-                else:
-                    failed_count += 1
-                    task_results.append(TaskResult(
-                        success=False,
-                        answer="",
-                        error=r.get('error', 'Unknown error')
-                    ))
-            
-            return BatchTaskResult(
-                total=len(results),
-                success_count=success_count,
-                failed_count=failed_count,
-                results=task_results,
-                output_file=output_path
-            )
-            
-        except Exception as e:
-            print(f"Batch execution failed: {e}")
-            return BatchTaskResult(
-                total=0,
-                success_count=0,
-                failed_count=0,
-                results=[],
-                output_file=None
-            )
-        finally:
-            self.agent_config.verbose = original_verbose
-    
     def run_batch_parallel(
         self,
         questions: List[str],
@@ -324,22 +206,21 @@ class PhoneAgentAPI:
         max_workers: Optional[int] = None
     ) -> ParallelBatchResult:
         """
-        Run batch tasks in parallel across multiple devices.
+        多设备并行执行批量任务。
         
-        Automatically detects available devices and distributes tasks
-        evenly across them for parallel execution.
+        自动检测可用设备，并将任务均匀分配到各个设备并发执行。
         
-        Args:
-            questions: List of questions to process
-            task_template: Task template, use {content} as placeholder
-            embed_screenshot: Whether to save screenshots
-            verbose: Whether to show verbose output
-            max_workers: Max concurrent workers (default: number of devices)
+        参数:
+            questions: 问题列表
+            task_template: 任务模板，使用 {content} 作为占位符
+            embed_screenshot: 是否保存截图
+            verbose: 是否显示详细输出
+            max_workers: 最大工作线程数（默认等于设备数）
             
-        Returns:
-            ParallelBatchResult with statistics and detailed results
+        返回:
+            ParallelBatchResult 对象，包含统计信息和详细结果
             
-        Example:
+        示例:
             >>> api = PhoneAgentAPI()
             >>> questions = ["问题 1", "问题 2", "问题 3", "问题 4"]
             >>> result = api.run_batch_parallel(
@@ -347,24 +228,24 @@ class PhoneAgentAPI:
             ...     task_template="请回答：{content}",
             ...     embed_screenshot=True
             ... )
-            >>> print(f"Total: {result.total}")
-            >>> print(f"Success: {result.success_count}")
-            >>> print(f"Time: {result.total_time:.2f}s")
+            >>> print(f"总计：{result.total}")
+            >>> print(f"成功：{result.success_count}")
+            >>> print(f"耗时：{result.total_time:.2f}秒")
             >>> 
-            >>> # Access per-device results
+            >>> # 查看各设备的执行结果
             >>> for device_result in result.device_results:
-            ...     print(f"Device {device_result['device_id']}: {device_result['success_count']} success")
+            ...     print(f"设备 {device_result['device_id']}: {device_result['success_count']} 个成功")
         """
         from phone_agent.parallel_executor import ParallelExecutor
         
-        # Create parallel executor
+        # 创建并行执行器
         executor = ParallelExecutor(
             model_config=self.model_config,
             agent_config=self.agent_config,
             max_workers=max_workers
         )
         
-        # Run parallel batch
+        # 执行并行批量任务
         parallel_result = executor.run_parallel_batch(
             questions=questions,
             task_template=task_template,
@@ -372,7 +253,7 @@ class PhoneAgentAPI:
             verbose=verbose
         )
         
-        # Convert to our result type
+        # 转换为我们的结果类型
         task_results = []
         for r in parallel_result.merged_results:
             if r.get('success', False):
@@ -405,35 +286,35 @@ class PhoneAgentAPI:
 # ============================================================================
 
 def main():
-    """Main entry point for standalone execution."""
-    print("Phone Agent API - Multi-Device Parallel Execution")
+    """独立执行的入口点。"""
+    print("Phone Agent API - 多设备并行执行")
     print("=" * 60)
     
-    # Initialize API
+    # 初始化 API
     api = PhoneAgentAPI()
     
-    # Get available devices
+    # 获取可用设备
     devices = get_device_factory().list_devices()
-    print(f"\nAvailable devices: {len(devices)}")
+    print(f"\n可用设备数：{len(devices)}")
     for device in devices:
         print(f"  - {device.device_id}")
     
     if len(devices) == 0:
-        print("\n❌ No devices connected. Please connect ADB devices.")
+        print("\n❌ 没有连接设备。请连接 ADB 设备。")
         return
     
-    # Demo: Single task
+    # 演示：单个任务
     print("\n" + "=" * 60)
-    print("Demo: Single Task Execution")
+    print("演示：单个任务执行")
     print("=" * 60)
     
     result = api.run_task("查看时间", verbose=False)
-    print(f"Result: {result.answer}")
+    print(f"结果：{result.answer}")
     
-    # Demo: Parallel batch execution
+    # 演示：多设备并行批量执行
     if len(devices) > 1:
         print("\n" + "=" * 60)
-        print("Demo: Multi-Device Parallel Batch Execution")
+        print("演示：多设备并行批量执行")
         print("=" * 60)
         
         questions = [
@@ -450,25 +331,25 @@ def main():
             verbose=False
         )
         
-        print(f"\n📊 Statistics:")
-        print(f"  Total questions: {batch_result.total}")
-        print(f"  Success: {batch_result.success_count}")
-        print(f"  Failed: {batch_result.failed_count}")
-        print(f"  Total time: {batch_result.total_time:.2f}s")
+        print(f"\n📊 统计:")
+        print(f"  总问题数：{batch_result.total}")
+        print(f"  成功：{batch_result.success_count}")
+        print(f"  失败：{batch_result.failed_count}")
+        print(f"  总耗时：{batch_result.total_time:.2f}秒")
         
-        print(f"\n📱 Device Results:")
+        print(f"\n📱 各设备结果:")
         for dr in batch_result.device_results:
-            print(f"  Device {dr['device_id']}: {dr['success_count']} success, {dr['failed_count']} failed")
+            print(f"  设备 {dr['device_id']}: {dr['success_count']} 成功，{dr['failed_count']} 失败")
         
-        print(f"\n✅ Detailed Results:")
+        print(f"\n✅ 详细结果 (前 3 个):")
         for i, r in enumerate(batch_result.results[:3], 1):
             status = "✅" if r.success else "❌"
             print(f"  {i}. {status} {r.answer[:50] if r.answer else r.error}")
     else:
-        print("\n⚠️  Only 1 device available, parallel execution not demonstrated.")
+        print("\n⚠️  只有 1 个设备，无法演示并行执行。")
     
     print("\n" + "=" * 60)
-    print("For more examples, see: examples/api_usage.py")
+    print("更多示例请查看：examples/parallel_execution.py")
     print("=" * 60)
 
 
