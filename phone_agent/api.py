@@ -9,8 +9,9 @@ Phone Agent API - 程序化接口
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
-from phone_agent import PhoneAgent, AgentConfig, ModelConfig
-from phone_agent.device_factory import DeviceType, set_device_factory
+from phone_agent.agent import PhoneAgent, AgentConfig
+from phone_agent.model import ModelConfig
+from phone_agent.device_factory import DeviceType, set_device_type
 
 
 @dataclass
@@ -76,7 +77,7 @@ class PhoneAgentAPI:
             config_path: config.json 文件路径
         """
         # 全局设置设备类型
-        set_device_factory(DeviceType.ADB)
+        set_device_type(DeviceType.ADB)
         
         # 如果未提供配置，则从文件加载
         if model_config is None or agent_config is None:

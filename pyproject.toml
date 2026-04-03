@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autophone"
+version = "0.1.0"
+description = "AutoPhone 命令行工具与库：通过 Typer 提供 git/npm 风格的子命令交互"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "AutoPhone Maintainers" }
+]
+dependencies = [
+  "typer>=0.12,<1.0",
+  "Pillow>=10.0.0",
+  "openai>=2.9.0",
+  "requests>=2.31.0",
+  "httpx>=0.25.0",
+  "ollama>=0.4.0",
+  "anthropic>=0.86.0",
+  "pandas>=3.0.1",
+  "openpyxl>=3.1.0",
+  "flask>=3.0.0",
+  "flask-cors>=4.0.0",
+]
+
+[project.scripts]
+autophone = "phone_agent.cli:main"
+
+[tool.setuptools]
+packages = [
+  "phone_agent",
+  "phone_agent.actions",
+  "phone_agent.actions.sets",
+  "phone_agent.adb",
+  "phone_agent.config",
+  "phone_agent.history",
+  "phone_agent.model",
+  "phone_agent.utils",
+]
+
+[tool.autophone]
+# 自定义工具配置占位
+
+# 使用 uv 的建议命令（文档化说明，非执行）：
+# 1) 创建/同步环境并安装依赖
+#    uv sync
+# 2) 运行 CLI（无需全局安装）
+#    uv run autophone --help
+#    uv run autophone run "打开微信"
+#    uv run autophone batch -i 问题.xlsx
+# 3) 以模块形式运行
+#    uv run python -m phone_agent --help
