@@ -26,6 +26,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+import json
+from datetime import datetime
 import typer
 
 try:
@@ -434,6 +436,135 @@ def cmd_keyboard_install(
         if "already exists" in output.lower():
             typer.echo("ℹ️  键盘可能已经安装，可以在手机设置中切换输入法")
         raise typer.Exit(code=1)
+
+
+# ------------------------
+# config 子命令组（配置文件管理）
+# ------------------------
+
+config_app = typer.Typer(help="配置文件管理工具（读取/修改 config.json）")
+app.add_typer(config_app, name="config")
+
+
+def _config_default_path() -> Path:
+    """默认配置文件路径：项目根目录下的 config.json"""
+    return _project_root() / "config.json"
+
+
+def _load_config(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        typer.echo(f"❌ 读取配置失败：{e}")
+        raise typer.Exit(code=1)
+
+
+def _save_config(path: Path, data: dict, backup: bool = True):
+    if backup and path.exists():
+        ts = datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_path = path.with_suffix(path.suffix + f".bak.{ts}")
+        try:
+            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+            typer.echo(f"🗂️  已创建备份：{backup_path}")
+        except Exception as e:
+            typer.echo(f"⚠️  创建备份失败：{e}")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+    except Exception as e:
+        typer.echo(f"❌ 写入配置失败：{e}")
+        raise typer.Exit(code=1)
+
+
+def _get_by_path(d: dict, path: str):
+    cur = d
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def _set_by_path(d: dict, path: str, value):
+    parts = path.split(".")
+    cur = d
+    for p in parts[:-1]:
+        if p not in cur or not isinstance(cur[p], dict):
+            cur[p] = {}
+        cur = cur[p]
+    cur[parts[-1]] = value
+
+
+@config_app.command("path")
+def cmd_config_path(
+    path: Optional[str] = typer.Option(None, "--path", help="配置文件路径（默认：项目根目录 config.json）"),
+):
+    """显示配置文件实际路径"""
+    target = Path(path) if path else _config_default_path()
+    typer.echo(str(target.resolve()))
+
+
+@config_app.command("show")
+def cmd_config_show(
+    path: Optional[str] = typer.Option(None, "--path", help="配置文件路径（默认：项目根目录 config.json）"),
+):
+    """打印完整配置内容（JSON 格式）"""
+    target = Path(path) if path else _config_default_path()
+    data = _load_config(target)
+    typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@config_app.command("get")
+def cmd_config_get(
+    key: str = typer.Argument(..., help='键路径，支持点号语法，例如 "model.provider"'),
+    path: Optional[str] = typer.Option(None, "--path", help="配置文件路径（默认：项目根目录 config.json）"),
+):
+    """读取配置中的指定键"""
+    target = Path(path) if path else _config_default_path()
+    data = _load_config(target)
+    value = _get_by_path(data, key)
+    if value is None:
+        typer.echo("null")
+    else:
+        # 尽量以 JSON 形式输出，便于脚本化使用
+        try:
+            typer.echo(json.dumps(value, ensure_ascii=False))
+        except Exception:
+            typer.echo(str(value))
+
+
+@config_app.command("set")
+def cmd_config_set(
+    key: str = typer.Argument(..., help='键路径，支持点号语法，例如 "model.local.base_url"'),
+    value: str = typer.Argument(..., help='值，优先按 JSON 解析（如 true/123/{"a":1}），解析失败则作为字符串写入'),
+    path: Optional[str] = typer.Option(None, "--path", help="配置文件路径（默认：项目根目录 config.json）"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="保存前是否生成备份（默认：是）"),
+):
+    """设置配置中的指定键并写回磁盘"""
+    target = Path(path) if path else _config_default_path()
+    data = _load_config(target)
+
+    # 解析 value：优先尝试当作 JSON
+    parsed = value
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        # 保留原始字符串
+        parsed = value
+
+    _set_by_path(data, key, parsed)
+    _save_config(target, data, backup=backup)
+    typer.echo(f"✅ 已更新 {key}")
+    # 输出变更后该键值，便于脚本化
+    new_value = _get_by_path(data, key)
+    try:
+        typer.echo(json.dumps(new_value, ensure_ascii=False))
+    except Exception:
+        typer.echo(str(new_value))
 
 
 # ------------------------

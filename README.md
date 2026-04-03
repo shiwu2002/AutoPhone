@@ -32,6 +32,7 @@ uv 是一个快速的 Python 包与环境管理工具。
 - WiFi 连接：`uv run autophone wifi connect --ip 192.168.1.100 --port 5555`
 - WiFi 断开：`uv run autophone wifi disconnect --ip 192.168.1.100`
 - 列出设备：`uv run autophone wifi list`
+- 列出配置文件帮助：`uv run autophone config --help` 
 - 安装键盘：`uv run autophone keyboard install --device ABC123DEF456`
 - 模块形式（等价）：`uv run python -m phone_agent --help`
 
