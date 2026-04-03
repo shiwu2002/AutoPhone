@@ -28,11 +28,14 @@ dependencies = [
 [project.scripts]
 autophone = "phone_agent.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/shiwu2002/AutoPhone"
+Repository = "https://github.com/shiwu2002/AutoPhone"
+
 [tool.setuptools]
 packages = [
   "phone_agent",
   "phone_agent.actions",
-  "phone_agent.actions.sets",
   "phone_agent.adb",
   "phone_agent.config",
   "phone_agent.history",
