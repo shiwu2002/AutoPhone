@@ -49,6 +49,7 @@ APP_PACKAGES: dict[str, str] = {
     "网易云音乐": "com.netease.cloudmusic",
     "QQ音乐": "com.tencent.qqmusic",
     "汽水音乐": "com.luna.music",
+    "酷狗音乐": "com.kugou.android",
     "喜马拉雅": "com.ximalaya.ting.android",
     # 阅读
     "番茄小说": "com.dragon.read",
