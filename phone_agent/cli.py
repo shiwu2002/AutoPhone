@@ -583,6 +583,39 @@ def cmd_version():
     typer.echo(f"AutoPhone CLI 版本：{ver or '0.1.0'}")
 
 
+# ------------------------
+# mcp 子命令（MCP 服务器）
+# ------------------------
+
+@app.command("mcp")
+def cmd_mcp(
+    transport: str = typer.Option("stdio", "--transport", "-t", help="传输模式：stdio（本地）或 sse（网络远程调用）"),
+    host: str = typer.Option("0.0.0.0", "--host", help="SSE 模式监听地址"),
+    port: int = typer.Option(8080, "--port", "-p", help="SSE 模式监听端口"),
+    config: Optional[str] = typer.Option(None, "--config", help="config.json 配置文件路径"),
+):
+    """
+    启动 AutoPhone MCP 服务器，供其他智能体通过 MCP 协议调用。
+
+    支持两种传输模式：
+    - stdio：标准输入输出（本地调用，适合 Claude Desktop 等客户端）
+    - sse：HTTP SSE 网络传输（远程调用，适合其他智能体通过网络访问）
+
+    示例：
+      autophone mcp                                    # stdio 模式
+      autophone mcp -t sse --port 8080                 # SSE 网络模式
+      autophone mcp -t sse --host 0.0.0.0 --port 9000  # 自定义地址和端口
+    """
+    from phone_agent.mcp_server import main as mcp_main
+    import sys
+
+    argv = ["mcp_server", "--transport", transport, "--host", host, "--port", str(port)]
+    if config:
+        argv.extend(["--config", config])
+    sys.argv = argv
+    mcp_main()
+
+
 def main():
     """入口函数，便于 python -m 或直接调用"""
     app()

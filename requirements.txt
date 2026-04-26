@@ -24,6 +24,10 @@ openpyxl>=3.1.0         # Excel 文件读写（.xlsx 支持）
 flask>=3.0.0            # Web 服务器框架
 flask-cors>=4.0.0       # Flask 跨域支持
 
+# MCP 服务器
+# -----------------------------------------
+mcp[cli]>=1.6.0         # Model Context Protocol SDK（支持 stdio/SSE 传输）
+
 # 可选：开发工具
 # -----------------------------------------
 # pytest>=7.0.0          # 测试框架
