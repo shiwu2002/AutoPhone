@@ -49,6 +49,8 @@ def get_screenshot(device_id: str | None = None, timeout: int = 10, enable_compr
 
     try:
         # Execute screenshot command
+        # 执行ADB截屏命令，将截图保存到手机的/sdcard/tmp.png路径
+        # screencap是Android系统自带的截屏工具，-p参数表示输出PNG格式
         result = subprocess.run(
             adb_prefix + ["shell", "screencap", "-p", "/sdcard/tmp.png"],
             capture_output=True,
@@ -56,12 +58,13 @@ def get_screenshot(device_id: str | None = None, timeout: int = 10, enable_compr
             timeout=timeout,
         )
 
-        # Check for screenshot failure (sensitive screen)
+        # 检查截屏是否失败（通常是因为当前页面是敏感页面，如支付、银行APP禁止截屏）
         output = result.stdout + result.stderr
         if "Status: -1" in output or "Failed" in output:
+            # 截屏失败时返回黑色 fallback 图片，并标记为敏感页面
             return _create_fallback_screenshot(is_sensitive=True)
 
-        # Pull screenshot to local temp path
+        # 将保存在手机上的截图文件拉取到本地电脑的临时目录
         subprocess.run(
             adb_prefix + ["pull", "/sdcard/tmp.png", temp_path],
             capture_output=True,
@@ -69,44 +72,49 @@ def get_screenshot(device_id: str | None = None, timeout: int = 10, enable_compr
             timeout=5,
         )
 
+        # 检查拉取是否成功，如果本地临时文件不存在则返回 fallback 图片
         if not os.path.exists(temp_path):
             return _create_fallback_screenshot(is_sensitive=False)
 
-        # Read and process image
+        # 读取本地截图文件并进行处理
         img = Image.open(temp_path)
-        original_width, original_height = img.size
+        original_width, original_height = img.size  # 记录原始屏幕分辨率
 
-        # Compress image if enabled
+        # 如果开启了压缩功能（默认开启），则将图片压缩到1080p以减少token消耗
         converter = None
         mapper = None
         if enable_compression:
             converter = ResolutionConverter()
-            img = converter.compress_to_1k(img)
-            # 创建坐标映射器
+            img = converter.compress_to_1k(img)  # 等比例压缩到宽度1080像素
+            # 创建坐标映射器，用于后续将大模型返回的压缩图坐标转换回实际屏幕坐标
             mapper = CoordinateMapper.from_converter(converter)
 
-        width, height = img.size
+        width, height = img.size  # 压缩后的图片尺寸
 
+        # 将处理后的图片转换为Base64编码，方便传给大模型接口
         buffered = BytesIO()
         img.save(buffered, format="PNG")
         base64_data = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-        # Cleanup
+        # 清理本地临时文件，避免占用磁盘空间
         os.remove(temp_path)
 
+        # 封装成Screenshot对象返回，包含所有需要的信息
         return Screenshot(
-            base64_data=base64_data,
-            width=width,
-            height=height,
-            is_sensitive=False,
-            converter=converter,
-            mapper=mapper,
-            original_width=original_width,
-            original_height=original_height
+            base64_data=base64_data,      # Base64编码的图片数据
+            width=width,                  # 压缩后的图片宽度
+            height=height,                # 压缩后的图片高度
+            is_sensitive=False,           # 是否是敏感页面截图
+            converter=converter,          # 分辨率转换器实例
+            mapper=mapper,                # 坐标映射器实例
+            original_width=original_width,# 原始屏幕宽度
+            original_height=original_height# 原始屏幕高度
         )
 
+    # 捕获所有异常，保证流程不会因为截屏失败而中断
     except Exception as e:
         print(f"Screenshot error: {e}")
+        # 发生异常时返回 fallback 图片
         return _create_fallback_screenshot(is_sensitive=False)
 
 

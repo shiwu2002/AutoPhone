@@ -2,6 +2,7 @@
 
 import ast
 import time
+from collections import defaultdict
 from typing import Any, Callable, Optional
 
 from phone_agent.adb.screenshot import Screenshot
@@ -28,6 +29,10 @@ class ActionHandler:
         agent_config: Agent 配置（用于 Excel 批量处理工具）。
     """
 
+    # ========== 防死循环配置 ==========
+    MAX_CONSECUTIVE_FAILURES = 3  # 最大连续失败次数，超过后提示换方法
+    FAIL_FAST = False  # 连续失败达到阈值后是否直接终止任务，False=让大模型决定，True=直接结束
+
     def __init__(
         self,
         device_id: Optional[str] = None,
@@ -42,6 +47,10 @@ class ActionHandler:
         self.model_config = model_config
         self.agent_config = agent_config
         self.registry = get_registry()
+
+        # ========== 失败统计变量 ==========
+        self._consecutive_failures = 0  # 全局连续失败次数
+        self._action_fail_counts = defaultdict(int)  # 每个动作的失败次数
 
     def execute(
         self, action: dict[str, Any], screenshot: Screenshot
@@ -93,21 +102,78 @@ class ActionHandler:
 
         try:
             # 调用处理函数，传入必要的上下文
-            return handler_method(
-                action,
-                screenshot,
-                device_id=self.device_id,
-                model_config=self.model_config,
-                agent_config=self.agent_config,
-                takeover_callback=self.takeover_callback,
-            )
-        except TypeError:
-            # 向后兼容：如果处理函数不需要额外参数
-            return handler_method(action, screenshot)
+            try:
+                result = handler_method(
+                    action,
+                    screenshot,
+                    device_id=self.device_id,
+                    model_config=self.model_config,
+                    agent_config=self.agent_config,
+                    takeover_callback=self.takeover_callback,
+                )
+            except TypeError:
+                # 向后兼容：如果处理函数不需要额外参数
+                result = handler_method(action, screenshot)
+
+            # ========== 执行成功，重置失败计数器 ==========
+            if result.success:
+                self._consecutive_failures = 0
+                action_name = action.get("action", "unknown")
+                if action_name in self._action_fail_counts:
+                    self._action_fail_counts[action_name] = 0
+
+            return result
+
         except Exception as e:
             logger.error(f"Action failed: {e}", exc_info=True)
+
+            # ========== 失败统计和防死循环逻辑 ==========
+            self._consecutive_failures += 1
+            action_name = action.get("action", "unknown")
+            self._action_fail_counts[action_name] += 1
+            action_fail_count = self._action_fail_counts[action_name]
+
+            # 基础错误信息
+            base_msg = f"Action failed: {str(e)}"
+            error_msg = base_msg
+            should_finish = False
+
+            # 1. 全局连续失败达到阈值的处理
+            if self._consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
+                error_msg = (
+                    f"⚠️ 已经连续失败{self._consecutive_failures}次，请勿再重复相同操作！"
+                    f"请尝试其他方法（比如返回上一页、重新进入应用、调整坐标等），如果无法完成任务请直接结束。"
+                    f"本次错误：{str(e)}"
+                )
+                should_finish = self.FAIL_FAST  # 根据配置决定是否直接结束
+
+            # 2. 单个动作多次失败的提示
+            elif action_fail_count >= 2:
+                error_msg = (
+                    f"⚠️ 动作[{action_name}]已经失败{action_fail_count}次，请调整参数后重试或者更换其他操作。"
+                    f"本次错误：{str(e)}"
+                )
+
+            # 3. 针对特定错误类型的个性化提示
+            error_lower = str(e).lower()
+            if "coordinate out of bounds" in error_lower or "outside screen" in error_lower or "超出屏幕" in error_lower:
+                error_msg = f"❌ 点击坐标超出屏幕范围，请调整坐标值（有效范围0-1000）后重试。错误：{str(e)}"
+            elif "app not found" in error_lower or "没有找到应用" in error_lower or "未安装" in error_lower:
+                error_msg = f"❌ 应用未安装，请确认应用名称正确或者更换其他应用。错误：{str(e)}"
+                should_finish = True  # 应用未安装直接结束，没必要重试
+            elif "input method not ready" in error_lower or "输入法" in error_lower:
+                error_msg = f"❌ 输入法未准备好，请先点击输入框激活后再尝试输入。错误：{str(e)}"
+            elif "timeout" in error_lower or "超时" in error_lower:
+                error_msg = f"⚠️ 操作超时，可能是页面未加载完成，请稍等片刻后重试或者返回上一页。错误：{str(e)}"
+            elif "permission denied" in error_lower or "权限" in error_lower:
+                error_msg = f"❌ 权限不足，无法执行该操作，请开启相应权限后重试。错误：{str(e)}"
+                should_finish = True  # 权限问题无法通过重试解决
+
+            # 返回结果
             return ActionResult(
-                success=False, should_finish=False, message=f"Action failed: {e}"
+                success=False,
+                should_finish=should_finish,
+                message=error_msg
             )
 
     def _handle_query_action(self, action: dict[str, Any], screenshot: Screenshot) -> ActionResult:

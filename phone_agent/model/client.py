@@ -1,4 +1,4 @@
-"""用于 OpenAI 兼容 API 的 AI 推理模型客户端。"""
+"""多模态大模型客户端，支持Anthropic、OpenAI、本地Ollama三种提供商，自动处理格式适配、错误降级、性能统计。"""
 
 import json
 import logging
@@ -14,7 +14,7 @@ from phone_agent.config.i18n import get_message
 
 logger = logging.getLogger(__name__)
 
-# Try to import ollama SDK (optional, for enhanced thinking support)
+# 检测Ollama SDK是否安装（可选依赖，用于支持Ollama原生思考模式）
 try:
     import ollama
     OLLAMA_SDK_AVAILABLE = True
@@ -24,60 +24,63 @@ except ImportError:
 
 @dataclass
 class ModelConfig:
-    """AI 模型的配置。"""
+    """大模型配置参数，统一管理不同提供商的连接和推理参数。"""
 
-    base_url: str = "http://localhost:8000/v1"
-    api_key: str = "EMPTY"
-    model_name: str = "autoglm-phone-9b"
-    max_tokens: int = 3000
-    temperature: float = 0.0
-    top_p: float = 0.85
-    frequency_penalty: float = 0.2
-    extra_body: Dict[str, Any] = field(default_factory=dict)
-    lang: str = "cn"  # Language for UI messages: 'cn' or 'en'
-    use_thinking: bool = False  # Whether to use model's built-in thinking feature (Ollama)
-    provider: str = "anthropic"  # Model provider: anthropic, openai, local
+    base_url: str = "http://localhost:8000/v1"  # API接口地址，本地Ollama默认是http://localhost:11434/v1
+    api_key: str = "EMPTY"  # API密钥，本地部署的模型不需要密钥，填EMPTY即可
+    model_name: str = "autoglm-phone-9b"  # 模型名称，比如qwen-vl:7b、claude-3-opus-20240229、gpt-4-vision-preview
+    max_tokens: int = 3000  # 最大生成token数，控制响应长度
+    temperature: float = 0.0  # 温度参数，0=确定性输出，越高越有创造性
+    top_p: float = 0.85  # 核采样参数，控制生成多样性
+    frequency_penalty: float = 0.2  # 频率惩罚，减少重复内容
+    extra_body: Dict[str, Any] = field(default_factory=dict)  # 额外参数，用于传递模型特定配置
+    lang: str = "cn"  # UI提示语言：cn=中文，en=英文
+    use_thinking: bool = False  # 是否启用模型原生思考模式（仅Ollama支持）
+    provider: str = "anthropic"  # 模型提供商：anthropic=克劳德，openai=OpenAI/GPT，local=本地Ollama部署
 
 
 @dataclass
 class ModelResponse:
-    """来自 AI 模型的响应。"""
+    """大模型响应结果，结构化存储思考过程、动作指令和性能指标。"""
 
-    thinking: str
-    action: str
-    raw_content: str
-    # Performance metrics
-    time_to_first_token: float | None = None  # Time to first token (seconds)
-    time_to_thinking_end: float | None = None  # Time to thinking end (seconds)
-    total_time: float | None = None  # Total inference time (seconds)
+    thinking: str  # 模型的思考过程（<think>标签内的内容）
+    action: str  # 模型输出的动作指令（<answer>标签内的内容，格式为do(...)或finish(...)）
+    raw_content: str  # 模型返回的原始完整内容，用于调试
+    # 性能指标
+    time_to_first_token: float | None = None  # 首token耗时：从请求发起到收到第一个token的时间（秒）
+    time_to_thinking_end: float | None = None  # 思考结束耗时：从请求发起到思考部分输出完成的时间（秒）
+    total_time: float | None = None  # 总耗时：从请求发起到整个响应完成的时间（秒）
 
 
 class ModelClient:
     """
-    用于与 OpenAI 兼容的视觉语言模型交互的客户端。
-    支持 Anthropic、OpenAI 和本地 Ollama 三种提供商。
+    多模态大模型统一客户端，自动适配不同提供商的API格式，支持流式输出、思考过程解析、错误降级。
+    支持三种提供商：
+    1. anthropic：克劳德系列模型（Claude 3/3.5 Opus/Sonnet等）
+    2. openai：OpenAI GPT系列模型（GPT-4V等）
+    3. local：本地部署的Ollama模型（Qwen-VL、LLaVA、GLM-4V等）
 
     Args:
-        config: 模型配置。
+        config: 模型配置对象，包含连接地址、密钥、模型名称等参数
     """
 
     def __init__(self, config: ModelConfig | None = None):
         self.config = config or ModelConfig()
 
-        # Determine if we should use Ollama thinking
-        # Use thinking if explicitly enabled OR if using localhost/127.0.0.1 AND provider is local
+        # 判断是否启用Ollama原生思考模式：显式开启+本地部署 或者 本地部署且地址是localhost/127.0.0.1
         self._use_ollama_thinking = (
             (self.config.use_thinking and self.config.provider == "local") or
             ("localhost" in self.config.base_url or "127.0.0.1" in self.config.base_url)
             and self.config.provider == "local"
         )
 
-        # Create HTTP client with SSL verification disabled for local development
+        # 创建HTTP客户端，本地开发时禁用SSL验证，避免自签名证书报错
         self.http_client = httpx.Client(verify=False)
 
-        # Initialize client based on provider
+        # 根据提供商初始化对应的客户端
         if self.config.provider == "anthropic":
             try:
+                # 优先使用Anthropic官方SDK
                 from anthropic import Anthropic
                 self.client = Anthropic(
                     api_key=self.config.api_key,
@@ -85,73 +88,85 @@ class ModelClient:
                     http_client=self.http_client
                 )
             except ImportError:
-                print("⚠️  anthropic SDK not installed, falling back to OpenAI-compatible API")
-                print("   Install with: pip install anthropic")
+                # 未安装Anthropic SDK时降级到OpenAI兼容模式
+                print("⚠️  未安装anthropic SDK，已自动降级到OpenAI兼容模式")
+                print("   安装命令：pip install anthropic")
                 self.client = OpenAI(
                     base_url=self.config.base_url,
                     api_key=self.config.api_key,
                     http_client=self.http_client
                 )
         else:
-            # OpenAI or local (Ollama uses OpenAI-compatible API)
+            # OpenAI或本地Ollama都使用OpenAI兼容的SDK，Ollama原生支持OpenAI格式的接口
             self.client = OpenAI(
                 base_url=self.config.base_url,
                 api_key=self.config.api_key,
                 http_client=self.http_client
             )
 
-        # Health check for local providers
+        # 本地部署时自动检查Ollama服务是否正常运行，以及模型是否已下载
         if self.config.provider == "local":
             self._check_local_service()
 
     def request(self, messages: list[dict[str, Any]]) -> ModelResponse:
         """
-        向模型发送请求。
+        发送多模态请求到大模型，自动适配不同提供商的API格式。
 
         Args:
-            messages: OpenAI 格式的消息字典列表。
+            messages: OpenAI标准格式的消息列表，支持文本和图片，格式示例：
+                [
+                    {"role": "system", "content": "你是手机操作助手..."},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": "打开微信"},
+                        {"type": "image_url", "image_url": {"url": "data:image/png;base64,xxx"}}
+                    ]}
+                ]
 
         Returns:
-            包含思考和动作的 ModelResponse。
+            ModelResponse: 结构化的响应结果，包含思考过程、动作指令和性能指标
 
         Raises:
-            ValueError: 如果响应无法解析。
+            Exception: 请求失败时抛出异常，包含详细错误信息和解决方案
         """
-        # Start timing
+        # 记录请求开始时间，用于统计性能
         start_time = time.time()
 
-        # Use provider-specific request method
+        # 根据提供商选择对应的请求方法
         if self.config.provider == "anthropic":
+            # Anthropic Claude系列模型，格式需要特殊转换
             return self._request_anthropic(messages, start_time)
         elif self._use_ollama_thinking:
+            # 本地Ollama模型，启用原生思考模式（支持输出思考过程）
             return self._request_with_thinking(messages, start_time)
         else:
+            # 其他情况使用OpenAI兼容格式请求，包括OpenAI GPT系列、普通Ollama部署、其他兼容OpenAI接口的模型服务
             return self._request_openai(messages, start_time)
 
     def _request_anthropic(self, messages: list[dict[str, Any]], start_time: float) -> ModelResponse:
         """
-        Request using Anthropic API.
+        调用Anthropic Claude系列模型的API，自动将OpenAI格式的消息转换成Anthropic要求的格式。
 
         Args:
-            messages: Message list (OpenAI format, will be converted)
-            start_time: Request start time
+            messages: OpenAI格式的消息列表
+            start_time: 请求开始时间戳，用于统计性能
 
         Returns:
-            ModelResponse with thinking and action
+            ModelResponse: 结构化的响应结果
         """
         try:
             from anthropic import Anthropic
 
-            # Convert system message to Anthropic format
+            # ========== 格式转换：OpenAI格式 → Anthropic格式 ==========
+            # Anthropic的系统提示是单独的参数，不是消息列表里的system角色
             system_message = ""
-            openai_messages = []
+            anthropic_messages = []
 
             for msg in messages:
                 role = msg.get('role', '')
                 content = msg.get('content', '')
 
                 if role == 'system':
-                    # Anthropic uses system parameter, not system message
+                    # 提取系统提示内容，只保留文本部分，丢弃图片
                     if isinstance(content, list):
                         system_message = ' '.join(
                             item.get('text', '') for item in content if item.get('type') == 'text'
@@ -159,21 +174,21 @@ class ModelClient:
                     else:
                         system_message = str(content)
                 elif role == 'user':
-                    # Convert content format
+                    # 转换用户消息格式，支持图片+文本
                     if isinstance(content, list):
-                        anthropic_content = []
+                        converted_content = []
                         for item in content:
                             if item.get('type') == 'text':
-                                anthropic_content.append({'type': 'text', 'text': item.get('text', '')})
+                                converted_content.append({'type': 'text', 'text': item.get('text', '')})
                             elif item.get('type') == 'image_url':
+                                # 提取图片的Base64数据和媒体类型，转换成Anthropic要求的image格式
                                 img_url = item.get('image_url', {}).get('url', '')
                                 if img_url.startswith('data:'):
-                                    # Extract media type and base64
                                     parts = img_url.split(',', 1)
                                     if len(parts) == 2:
                                         media_type = parts[0].split(':')[1].split(';')[0]
                                         base64_data = parts[1]
-                                        anthropic_content.append({
+                                        converted_content.append({
                                             'type': 'image',
                                             'source': {
                                                 'type': 'base64',
@@ -181,17 +196,19 @@ class ModelClient:
                                                 'data': base64_data
                                             }
                                         })
-                        openai_messages.append({'role': 'user', 'content': anthropic_content})
+                        anthropic_messages.append({'role': 'user', 'content': converted_content})
                     else:
-                        openai_messages.append({'role': 'user', 'content': [{'type': 'text', 'text': str(content)}]})
+                        # 纯文本消息
+                        anthropic_messages.append({'role': 'user', 'content': [{'type': 'text', 'text': str(content)}]})
                 elif role == 'assistant':
+                    # 转换助手消息，只保留文本部分
                     if isinstance(content, list):
                         text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
-                        openai_messages.append({'role': 'assistant', 'content': ' '.join(text_parts)})
+                        anthropic_messages.append({'role': 'assistant', 'content': ' '.join(text_parts)})
                     else:
-                        openai_messages.append({'role': 'assistant', 'content': str(content)})
+                        anthropic_messages.append({'role': 'assistant', 'content': str(content)})
 
-            # Create client if not already created
+            # 确保Anthropic客户端已初始化
             if not hasattr(self, 'anthropic_client') or self.client.__class__.__name__ != 'Anthropic':
                 http_client = httpx.Client(verify=False)
                 self.anthropic_client = Anthropic(
@@ -202,43 +219,46 @@ class ModelClient:
             else:
                 self.anthropic_client = self.client
 
-            # Make request with streaming
-            time_to_first_token = None
-            time_to_thinking_end = None
-            first_token_received = False
+            # ========== 流式请求处理 ==========
+            time_to_first_token = None  # 首token耗时
+            time_to_thinking_end = None  # 思考结束耗时
+            first_token_received = False  # 是否已收到第一个token
 
             with self.anthropic_client.messages.stream(
                 model=self.config.model_name,
                 max_tokens=self.config.max_tokens,
                 system=system_message,
-                messages=openai_messages,
+                messages=anthropic_messages,
             ) as stream:
-                raw_content = ""
-                buffer = ""
-                action_markers = ["finish(message=", "do(action="]
-                in_action_phase = False
-                in_thinking = True
+                raw_content = ""  # 原始响应内容
+                buffer = ""  # 缓冲区，用于检测动作标记
+                action_markers = ["finish(message=", "do(action="]  # 动作开始标记
+                in_action_phase = False  # 是否已进入动作输出阶段
+                in_thinking = True  # 是否还在输出思考过程
 
                 for text in stream.text_stream:
                     raw_content += text
 
-                    # Record time to first token
+                    # 记录首token时间
                     if not first_token_received:
                         time_to_first_token = time.time() - start_time
                         first_token_received = True
 
+                    # 已经进入动作阶段，不需要处理思考内容，直接拼接即可
                     if in_action_phase:
                         continue
 
                     buffer += text
 
-                    # Check for action markers
+                    # 检测动作标记：找到do(或finish(，说明思考部分结束，开始输出动作
                     marker_found = False
                     for marker in action_markers:
                         if marker in buffer:
+                            # 分割思考和动作部分
                             thinking_part = buffer.split(marker, 1)[0]
                             thinking_part = thinking_part.replace("<think>", "").replace("</think>", "").strip()
                             if thinking_part:
+                                # 输出思考过程到控制台
                                 print(thinking_part, end="", flush=True)
                                 print()
                             in_action_phase = True
@@ -249,7 +269,7 @@ class ModelClient:
                     if marker_found:
                         continue
 
-                    # Check for XML tags (legacy format)
+                    # 兼容旧格式：检测XML标签 <think>...</think><answer>...</answer>
                     if "</think>" in buffer and "<answer>" in buffer:
                         thinking_end_idx = buffer.find("</think>")
                         thinking_part = buffer[:thinking_end_idx].replace("<think>", "").strip()
@@ -260,7 +280,7 @@ class ModelClient:
                         time_to_thinking_end = time.time() - start_time
                         continue
 
-                    # Check if buffer ends with potential marker prefix
+                    # 检测缓冲区是否以动作标记的前缀结尾，避免截断动作标记
                     is_potential_marker = False
                     for marker in action_markers:
                         for i in range(1, len(marker)):
@@ -270,17 +290,18 @@ class ModelClient:
                         if is_potential_marker:
                             break
 
+                    # 不是潜在标记前缀，输出缓冲区内容并清空
                     if not is_potential_marker:
                         print(buffer, end="", flush=True)
                         buffer = ""
 
-            # Calculate total time
+            # 计算总耗时
             total_time = time.time() - start_time
 
-            # Parse thinking and action from response
+            # 解析响应内容，分离思考和动作
             thinking, action = self._parse_response(raw_content)
 
-            # Print performance metrics
+            # 输出性能指标
             lang = self.config.lang
             print()
             print("=" * 50)
@@ -303,20 +324,21 @@ class ModelClient:
             )
 
         except Exception as e:
-            print(f"Anthropic API error: {e}")
+            print(f"Anthropic API请求失败: {e}")
             raise
 
     def _request_openai(self, messages: list[dict[str, Any]], start_time: float) -> ModelResponse:
         """
-        Request using OpenAI-compatible API.
+        调用OpenAI兼容格式的API，适用于OpenAI GPT系列、本地Ollama部署、以及其他兼容OpenAI接口的模型服务。
 
         Args:
-            messages: Message list (OpenAI format)
-            start_time: Request start time
+            messages: OpenAI标准格式的消息列表，支持文本和图片
+            start_time: 请求开始时间戳，用于统计性能
 
         Returns:
-            ModelResponse with thinking and action
+            ModelResponse: 结构化的响应结果
         """
+        # 创建流式请求，支持实时输出思考过程
         stream = self.client.chat.completions.create(
             messages=messages,
             model=self.config.model_name,
@@ -328,14 +350,15 @@ class ModelClient:
             stream=True,
         )
 
-        raw_content = ""
-        buffer = ""
-        action_markers = ["finish(message=", "do(action="]
-        in_action_phase = False
-        first_token_received = False
-        time_to_first_token = None
-        time_to_thinking_end = None
+        raw_content = ""  # 原始响应内容
+        buffer = ""  # 缓冲区，用于检测动作标记
+        action_markers = ["finish(message=", "do(action="]  # 动作开始标记
+        in_action_phase = False  # 是否已进入动作输出阶段
+        first_token_received = False  # 是否已收到第一个token
+        time_to_first_token = None  # 首token耗时
+        time_to_thinking_end = None  # 思考结束耗时
 
+        # 处理流式响应
         for chunk in stream:
             if len(chunk.choices) == 0:
                 continue
@@ -343,21 +366,25 @@ class ModelClient:
                 content = chunk.choices[0].delta.content
                 raw_content += content
 
+                # 记录首token时间
                 if not first_token_received:
                     time_to_first_token = time.time() - start_time
                     first_token_received = True
 
+                # 已经进入动作阶段，不需要处理思考内容，直接拼接即可
                 if in_action_phase:
                     continue
 
                 buffer += content
 
+                # 检测动作标记：找到do(或finish(，说明思考部分结束，开始输出动作
                 marker_found = False
                 for marker in action_markers:
                     if marker in buffer:
                         thinking_part = buffer.split(marker, 1)[0]
                         thinking_part = self._clean_thinking(thinking_part)
                         if thinking_part:
+                            # 输出思考过程到控制台
                             print(thinking_part, end="", flush=True)
                             print()
                         in_action_phase = True
@@ -369,6 +396,7 @@ class ModelClient:
                 if marker_found:
                     continue
 
+                # 兼容旧格式：检测XML标签 <think>...</think><answer>...</answer>
                 if "</think>" in buffer and "<answer>" in buffer:
                     thinking_end_idx = buffer.find("</think>")
                     thinking_part = buffer[:thinking_end_idx].replace("<think>", "").strip()
@@ -380,6 +408,7 @@ class ModelClient:
                         time_to_thinking_end = time.time() - start_time
                     continue
 
+                # 检测缓冲区是否以动作标记的前缀结尾，避免截断动作标记
                 is_potential_marker = False
                 for marker in action_markers:
                     for i in range(1, len(marker)):
@@ -389,22 +418,26 @@ class ModelClient:
                     if is_potential_marker:
                         break
 
+                # 不是潜在标记前缀，输出缓冲区内容并清空
                 if not is_potential_marker:
                     print(buffer, end="", flush=True)
                     buffer = ""
 
+        # 计算总耗时
         total_time = time.time() - start_time
+        # 解析响应内容，分离思考和动作
         thinking, action = self._parse_response(raw_content)
 
+        # 输出性能指标
         print()
         print("=" * 50)
-        print("Performance metrics:")
+        print("性能指标:")
         print("-" * 50)
         if time_to_first_token:
-            print(f"Time to first token: {time_to_first_token:.3f}s")
+            print(f"首token耗时: {time_to_first_token:.3f}s")
         if time_to_thinking_end:
-            print(f"Thinking time: {time_to_thinking_end:.3f}s")
-        print(f"Total inference time: {total_time:.3f}s")
+            print(f"思考耗时: {time_to_thinking_end:.3f}s")
+        print(f"总推理耗时: {total_time:.3f}s")
         print("=" * 50)
 
         return ModelResponse(
@@ -418,44 +451,44 @@ class ModelClient:
 
     def _request_with_thinking(self, messages: list[dict[str, Any]], start_time: float) -> ModelResponse:
         """
-        Request using Ollama SDK with thinking support.
-        This supports both text-only and multimodal (image + text) messages.
+        使用Ollama SDK调用支持原生思考模式的模型，支持纯文本和多模态（图片+文本）消息。
+        适用于本地部署的Qwen、GLM等支持思考输出的模型。
 
         Args:
-            messages: Message list
-            start_time: Request start time
+            messages: OpenAI格式的消息列表
+            start_time: 请求开始时间戳，用于统计性能
 
         Returns:
-            ModelResponse with thinking and action
+            ModelResponse: 结构化的响应结果
         """
-        # Always use Ollama SDK with think=True for thinking support
+        # 始终使用Ollama SDK并开启think=True参数，以获得原生思考支持
         return self._request_with_fallback(messages, start_time)
 
     def _request_with_fallback(self, messages: list[dict[str, Any]], start_time: float) -> ModelResponse:
         """
-        Request using Ollama SDK with thinking support (for images and text).
-        Falls back to OpenAI-compatible API if Ollama SDK is not available.
+        带降级机制的Ollama SDK调用，优先使用原生SDK支持多模态思考模式，SDK不可用时自动降级到OpenAI兼容接口。
+        保证在各种环境下都能正常工作。
 
         Args:
-            messages: Message list (OpenAI format)
-            start_time: Request start time
+            messages: OpenAI格式的消息列表
+            start_time: 请求开始时间戳，用于统计性能
 
         Returns:
-            ModelResponse with thinking and action
+            ModelResponse: 结构化的响应结果
         """
-        # Try Ollama SDK first (supports thinking with images)
+        # 优先使用Ollama SDK（支持图片的思考模式）
         if OLLAMA_SDK_AVAILABLE:
             try:
-                # Initialize Ollama client with the same host as OpenAI client
+                # 初始化Ollama客户端，使用和OpenAI客户端相同的主机地址，移除/v1后缀
                 ollama_client = ollama.Client(host=self.config.base_url.replace('/v1', ''))
 
-                # Convert OpenAI format to Ollama format
+                # 将OpenAI格式转换为Ollama格式
                 ollama_messages = []
                 for msg in messages:
                     ollama_msg = {'role': msg['role']}
                     content = msg.get('content', '')
                     if isinstance(content, list):
-                        # Handle multimodal content
+                        # 处理多模态内容，分离文本和图片
                         text_parts = []
                         images = []
                         for item in content:
@@ -464,7 +497,7 @@ class ModelClient:
                             elif item.get('type') == 'image_url':
                                 img_url = item.get('image_url', {}).get('url', '')
                                 if img_url.startswith('data:'):
-                                    # Extract base64 from data URL
+                                    # 从data URL中提取base64图片数据
                                     img_data = img_url.split(',', 1)[1]
                                     images.append(img_data)
                         ollama_msg['content'] = ' '.join(text_parts)
@@ -474,11 +507,11 @@ class ModelClient:
                         ollama_msg['content'] = content
                     ollama_messages.append(ollama_msg)
 
-                # Call Ollama SDK with thinking enabled (streaming)
+                # 调用Ollama SDK，开启思考模式，使用流式输出
                 stream = ollama_client.chat(
                     model=self.config.model_name,
                     messages=ollama_messages,
-                    think=True,  # Enable thinking feature
+                    think=True,  # 开启思考模式，输出思考过程
                     stream=True,
                     options={
                         'temperature': self.config.temperature,
@@ -486,21 +519,23 @@ class ModelClient:
                     }
                 )
 
-                # Process streaming response
-                thinking = ""
-                content = ""
-                in_thinking = False
-                thinking_complete = False
-                time_to_thinking_end = None
+                # 处理流式响应
+                thinking = ""  # 思考过程内容
+                content = ""   # 最终输出内容
+                in_thinking = False  # 是否正在输出思考过程
+                thinking_complete = False  # 思考过程是否已经结束
+                time_to_thinking_end = None  # 思考结束时间
 
                 for chunk in stream:
                     if hasattr(chunk.message, 'thinking') and chunk.message.thinking:
+                        # 处理思考内容
                         if not in_thinking:
                             in_thinking = True
-                            print("Thinking:")
+                            print("思考过程:")
                         print(chunk.message.thinking, end='', flush=True)
                         thinking += chunk.message.thinking
                     elif hasattr(chunk.message, 'content') and chunk.message.content:
+                        # 处理正式输出内容
                         if in_thinking and not thinking_complete:
                             print("\n")
                             thinking_complete = True
@@ -508,20 +543,20 @@ class ModelClient:
                         print(chunk.message.content, end='', flush=True)
                         content += chunk.message.content
 
-                print()  # Newline after streaming complete
+                print()  # 流式输出结束后换行
                 total_time = time.time() - start_time
 
-                # Parse action from content
+                # 从输出内容中解析动作指令
                 _, action = self._parse_response(content)
 
-                # Print performance metrics
+                # 输出性能指标
                 print()
                 print("=" * 50)
-                print("Performance metrics:")
+                print("性能指标:")
                 print("-" * 50)
                 if time_to_thinking_end:
-                    print(f"Thinking time: {time_to_thinking_end:.3f}s")
-                print(f"Total inference time: {total_time:.3f}s")
+                    print(f"思考耗时: {time_to_thinking_end:.3f}s")
+                print(f"总推理耗时: {total_time:.3f}s")
                 print("=" * 50)
 
                 return ModelResponse(
@@ -533,11 +568,11 @@ class ModelClient:
                     total_time=total_time,
                 )
             except Exception as e:
-                print(f"Ollama SDK failed: {e}, falling back to OpenAI API...")
+                print(f"Ollama SDK调用失败: {e}, 降级到OpenAI兼容接口...")
 
-        # Fallback to OpenAI-compatible API (non-streaming)
+        # 降级到OpenAI兼容接口（非流式）
         try:
-            # For local/Ollama providers, use minimal parameters to avoid 404 errors
+            # 对于本地/Ollama提供商，使用最少参数避免404错误
             if self.config.provider == "local":
                 response = self.client.chat.completions.create(
                     messages=messages,
@@ -558,36 +593,36 @@ class ModelClient:
 
             total_time = time.time() - start_time
 
-            # Extract content and reasoning/thinking from response
+            # 从响应中提取内容和推理/思考过程
             choice = response.choices[0]
             message = choice.message
 
-            # Ollama uses 'reasoning' field in OpenAI compat mode
+            # Ollama在OpenAI兼容模式下使用'reasoning'字段存储思考过程
             thinking = getattr(message, 'reasoning', None) or getattr(message, 'thinking', None) or ''
             content = message.content or ''
 
-            # If no reasoning field, try to parse from content
+            # 如果没有单独的思考字段，尝试从内容中解析
             if not thinking:
                 thinking, content = self._parse_response(content)
 
             time_to_thinking_end = time.time() - start_time if thinking else None
 
-            # Parse action from content
+            # 从内容中解析动作指令
             _, action = self._parse_response(content)
 
-            # Print thinking if available
+            # 如果有思考过程，输出到控制台
             if thinking:
                 print(thinking, flush=True)
                 print()
 
-            # Print performance metrics
+            # 输出性能指标
             print()
             print("=" * 50)
-            print("Performance metrics:")
+            print("性能指标:")
             print("-" * 50)
             if time_to_thinking_end:
-                print(f"Thinking time: {time_to_thinking_end:.3f}s")
-            print(f"Total inference time: {total_time:.3f}s")
+                print(f"思考耗时: {time_to_thinking_end:.3f}s")
+            print(f"总推理耗时: {total_time:.3f}s")
             print("=" * 50)
 
             return ModelResponse(
@@ -599,23 +634,24 @@ class ModelClient:
                 total_time=total_time,
             )
         except Exception as e:
-            # Final fallback to streaming
-            print(f"OpenAI API failed: {e}, using streaming...")
+            # 最终降级到流式请求
+            print(f"OpenAI API调用失败: {e}, 使用流式请求重试...")
             return self._request_with_streaming(messages, start_time)
 
     def _request_with_streaming(self, messages: list[dict[str, Any]], start_time: float) -> ModelResponse:
         """
-        Original streaming implementation (without reasoning/thinking extraction).
+        最终降级的流式请求实现，不依赖SDK的思考提取功能，直接从流式输出中解析思考和动作。
+        兼容性最好，几乎支持所有OpenAI兼容接口。
 
         Args:
-            messages: Message list
-            start_time: Request start time
+            messages: OpenAI格式的消息列表
+            start_time: 请求开始时间戳，用于统计性能
 
         Returns:
-            ModelResponse with thinking and action
+            ModelResponse: 结构化的响应结果
         """
         try:
-            # For local/Ollama providers, use minimal parameters to avoid 404 errors
+            # 对于本地/Ollama提供商，使用最少参数避免404错误
             if self.config.provider == "local":
                 try:
                     stream = self.client.chat.completions.create(
@@ -624,11 +660,11 @@ class ModelClient:
                         stream=True,
                     )
                 except Exception as e:
-                    print(f"Streaming request failed: {e}, retrying without extra parameters...")
+                    print(f"流式请求失败: {e}, 移除额外参数重试...")
                     stream = self.client.chat.completions.create(
                         messages=messages,
                         model=self.config.model_name,
-                        max_tokens=min(self.config.max_tokens, 4096),  # Cap max_tokens for compatibility
+                        max_tokens=min(self.config.max_tokens, 4096),  # 限制max_tokens提升兼容性
                         stream=True,
                     )
             else:
@@ -643,13 +679,13 @@ class ModelClient:
                     stream=True,
                 )
 
-            raw_content = ""
-            buffer = ""
-            action_markers = ["finish(message=", "do(action="]
-            in_action_phase = False
-            first_token_received = False
-            time_to_first_token = None
-            time_to_thinking_end = None
+            raw_content = ""  # 原始响应内容
+            buffer = ""  # 缓冲区，用于检测动作标记
+            action_markers = ["finish(message=", "do(action="]  # 动作开始标记
+            in_action_phase = False  # 是否已进入动作输出阶段
+            first_token_received = False  # 是否已收到第一个token
+            time_to_first_token = None  # 首token耗时
+            time_to_thinking_end = None  # 思考结束耗时
 
             for chunk in stream:
                 if len(chunk.choices) == 0:
@@ -658,15 +694,18 @@ class ModelClient:
                     content = chunk.choices[0].delta.content
                     raw_content += content
 
+                    # 记录首token时间
                     if not first_token_received:
                         time_to_first_token = time.time() - start_time
                         first_token_received = True
 
+                    # 已经进入动作阶段，不需要处理思考内容，直接拼接即可
                     if in_action_phase:
                         continue
 
                     buffer += content
 
+                    # 检测动作标记：找到do(或finish(，说明思考部分结束，开始输出动作
                     marker_found = False
                     for marker in action_markers:
                         if marker in buffer:
@@ -684,6 +723,7 @@ class ModelClient:
                     if marker_found:
                         continue
 
+                    # 兼容旧格式：检测XML标签 <think>...</think><answer>...</answer>
                     if "</think>" in buffer and "<answer>" in buffer:
                         thinking_end_idx = buffer.find("</think>")
                         thinking_part = buffer[:thinking_end_idx].replace("<think>", "").strip()
@@ -695,6 +735,7 @@ class ModelClient:
                             time_to_thinking_end = time.time() - start_time
                         continue
 
+                    # 检测缓冲区是否以动作标记的前缀结尾，避免截断动作标记
                     is_potential_marker = False
                     for marker in action_markers:
                         for i in range(1, len(marker)):
@@ -704,22 +745,25 @@ class ModelClient:
                         if is_potential_marker:
                             break
 
+                    # 不是潜在标记前缀，输出缓冲区内容并清空
                     if not is_potential_marker:
                         print(buffer, end="", flush=True)
                         buffer = ""
 
             total_time = time.time() - start_time
+            # 解析响应内容，分离思考和动作
             thinking, action = self._parse_response(raw_content)
 
+            # 输出性能指标
             print()
             print("=" * 50)
-            print("Performance metrics:")
+            print("性能指标:")
             print("-" * 50)
             if time_to_first_token:
-                print(f"Time to first token: {time_to_first_token:.3f}s")
+                print(f"首token耗时: {time_to_first_token:.3f}s")
             if time_to_thinking_end:
-                print(f"Thinking time: {time_to_thinking_end:.3f}s")
-            print(f"Total inference time: {total_time:.3f}s")
+                print(f"思考耗时: {time_to_thinking_end:.3f}s")
+            print(f"总推理耗时: {total_time:.3f}s")
             print("=" * 50)
 
             return ModelResponse(
@@ -741,58 +785,58 @@ class ModelClient:
 
     def _handle_request_error(self, error: Exception, start_time: float) -> None:
         """
-        Handle and display helpful error messages for API request failures.
+        处理API请求失败，输出友好的错误提示和解决方案。
 
         Args:
-            error: The exception that occurred
-            start_time: Request start time for timing info
+            error: 发生的异常对象
+            start_time: 请求开始时间戳，用于统计耗时
         """
         elapsed = time.time() - start_time
 
-        # Check for 404 errors specifically
+        # 专门处理404错误，给出针对性解决方案
         if hasattr(error, 'status_code') and error.status_code == 404:
             print()
             print("=" * 50)
-            print("❌ API Error 404 - Not Found")
+            print("❌ API错误 404 - 未找到资源")
             print("=" * 50)
-            print(f"Base URL: {self.config.base_url}")
-            print(f"Model: {self.config.model_name}")
+            print(f"请求地址: {self.config.base_url}")
+            print(f"模型名称: {self.config.model_name}")
             print()
 
             if self.config.provider == "local":
-                # Extract base URL for Ollama
+                # 提取Ollama的基础地址，去掉/v1后缀
                 base_url = self.config.base_url
                 if base_url.endswith("/v1"):
                     base_url = base_url[:-3]
 
-                print("Possible causes:")
-                print("1. Ollama service is not running")
-                print(f"   → Start with: ollama serve")
+                print("可能的原因:")
+                print("1. Ollama服务未启动")
+                print(f"   → 启动命令: ollama serve")
                 print()
-                print("2. Model is not installed")
-                print(f"   → Install with: ollama pull {self.config.model_name}")
+                print("2. 模型未下载")
+                print(f"   → 下载命令: ollama pull {self.config.model_name}")
                 print()
-                print("3. Wrong base URL configuration")
-                print(f"   → Default Ollama URL: http://localhost:11434/v1")
+                print("3. 基础地址配置错误")
+                print(f"   → 默认Ollama地址: http://localhost:11434/v1")
                 print()
 
-                # Quick diagnostic
-                print("Running diagnostic...")
+                # 快速诊断服务状态
+                print("正在运行诊断...")
                 try:
                     response = self.http_client.get(f"{base_url}/api/tags", timeout=3.0)
                     if response.status_code == 200:
                         models = response.json().get("models", [])
                         model_names = [m.get("name", "") for m in models]
-                        print(f"✓ Ollama service is running")
-                        print(f"✓ Available models: {', '.join(model_names)}")
+                        print(f"✓ Ollama服务运行正常")
+                        print(f"✓ 可用模型: {', '.join(model_names) if model_names else '无'}")
                         if self.config.model_name not in model_names:
-                            print(f"✗ Model '{self.config.model_name}' NOT FOUND")
+                            print(f"✗ 模型 '{self.config.model_name}' 不存在")
                     else:
-                        print(f"✗ Ollama returned status: {response.status_code}")
+                        print(f"✗ Ollama返回状态码: {response.status_code}")
                 except Exception as e:
-                    print(f"✗ Cannot connect to Ollama: {e}")
+                    print(f"✗ 无法连接到Ollama服务: {e}")
             else:
-                print("Check your API key and base URL configuration.")
+                print("请检查你的API密钥和基础地址配置是否正确。")
 
             print("=" * 50)
             print()
@@ -895,56 +939,57 @@ class ModelClient:
 
     def _check_local_service(self) -> bool:
         """
-        Check if local Ollama service is running and accessible.
+        检查本地Ollama服务是否正常运行和可访问。
+        会自动检测服务状态和可用模型，给出友好提示。
 
         Returns:
-            True if service is healthy, False otherwise.
+            服务正常返回True，否则返回False
         """
         try:
-            # Extract base URL without /v1 suffix
+            # 提取基础地址，去掉/v1后缀
             base_url = self.config.base_url
             if base_url.endswith("/v1"):
                 base_url = base_url[:-3]
 
-            # Try to connect to Ollama API
+            # 尝试连接Ollama的API获取模型列表
             response = self.http_client.get(f"{base_url}/api/tags", timeout=5.0)
 
             if response.status_code == 200:
-                # Service is running, check if model exists
+                # 服务运行正常，检查配置的模型是否存在
                 try:
                     data = response.json()
                     models = data.get("models", [])
                     model_names = [m.get("name", "") for m in models]
 
-                    # Check if configured model is available
+                    # 检查配置的模型是否在可用列表中
                     if self.config.model_name not in model_names:
-                        print(f"⚠️  Warning: Model '{self.config.model_name}' not found in Ollama")
-                        print(f"   Available models: {', '.join(model_names) if model_names else 'None'}")
-                        print(f"   Install with: ollama pull {self.config.model_name}")
+                        print(f"⚠️  警告: 模型 '{self.config.model_name}' 不存在于Ollama中")
+                        print(f"   可用模型: {', '.join(model_names) if model_names else '无'}")
+                        print(f"   安装命令: ollama pull {self.config.model_name}")
                 except Exception as e:
-                    logger.debug(f"Could not parse model list: {e}")
+                    logger.debug(f"无法解析模型列表: {e}")
                 return True
             elif response.status_code == 404:
-                print(f"❌ Ollama service returned 404 - endpoint not found")
-                print(f"   Base URL: {base_url}")
-                print(f"   Make sure Ollama is running: ollama serve")
+                print(f"❌ Ollama服务返回404 - 端点不存在")
+                print(f"   基础地址: {base_url}")
+                print(f"   请确认Ollama服务已启动: ollama serve")
                 return False
             else:
-                print(f"⚠️  Ollama service returned unexpected status: {response.status_code}")
+                print(f"⚠️  Ollama服务返回意外状态码: {response.status_code}")
                 return False
 
         except httpx.ConnectError:
-            print(f"❌ Cannot connect to Ollama service at {base_url}")
-            print(f"   Make sure Ollama is running: ollama serve")
-            print(f"   Default port: 11434")
+            print(f"❌ 无法连接到Ollama服务，地址: {base_url}")
+            print(f"   请确认Ollama服务已启动: ollama serve")
+            print(f"   默认端口: 11434")
             return False
         except httpx.ReadTimeout:
-            print(f"❌ Connection to Ollama service timed out")
-            print(f"   Base URL: {base_url}")
-            print(f"   Make sure Ollama is running and responsive")
+            print(f"❌ 连接Ollama服务超时")
+            print(f"   基础地址: {base_url}")
+            print(f"   请确认Ollama服务运行正常且可访问")
             return False
         except Exception as e:
-            print(f"⚠️  Error checking Ollama service: {e}")
+            print(f"⚠️  检查Ollama服务时出错: {e}")
             return False
 
 
